@@ -2,6 +2,8 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
+import { simpleId } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import type { Cliente, Template } from "@/types";
 
 interface NovoTituloModalProps {
@@ -43,9 +45,9 @@ export default function NovoTituloModal({ open, onClose }: NovoTituloModalProps)
 
   const atualizarListas = useCallback(async () => {
     const [clientesRes, titulosRes, disparosRes] = await Promise.all([
-      fetch("/api/clientes"),
-      fetch("/api/titulos"),
-      fetch("/api/disparos"),
+      apiFetch("/api/clientes"),
+      apiFetch("/api/titulos"),
+      apiFetch("/api/disparos"),
     ]);
 
     if (clientesRes.ok) {
@@ -76,7 +78,7 @@ export default function NovoTituloModal({ open, onClose }: NovoTituloModalProps)
           setSalvando(false);
           return;
         }
-        const resCliente = await fetch("/api/clientes", {
+        const resCliente = await apiFetch("/api/clientes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ nome: form.nomeCliente.trim(), telefone: form.telefoneCliente.trim() || undefined }),
@@ -124,7 +126,7 @@ export default function NovoTituloModal({ open, onClose }: NovoTituloModalProps)
         status: "ABERTO",
       };
 
-      const resTitulo = await fetch("/api/titulos", {
+      const resTitulo = await apiFetch("/api/titulos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -139,7 +141,7 @@ export default function NovoTituloModal({ open, onClose }: NovoTituloModalProps)
       const tituloId = String(tituloCriado._id ?? tituloCriado.id ?? "");
 
       if (form.disparar && tituloId) {
-        const resDisparo = await fetch("/api/disparos", {
+        const resDisparo = await apiFetch("/api/disparos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tituloId, template: templatePadrao }),

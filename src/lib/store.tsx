@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import type { Cliente, Titulo, Recebimento, Disparo, Template } from "@/types";
-import { mockClientes, mockTitulos, mockRecebimentos, mockDisparos, mockTemplates } from "@/lib/mock/data";
+import { mockTemplates } from "@/lib/mock/data";
 import { simpleId } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 interface Toast { id: number; message: string; type: "success" | "error" | "info"; }
 
@@ -18,6 +19,14 @@ interface Store {
   setDisparos: (fn: (prev: Disparo[]) => Disparo[]) => void;
   templates: Template[];
   setTemplates: (fn: (prev: Template[]) => Template[]) => void;
+  loading: boolean;
+  refetchTitulos: () => Promise<void>;
+  refetchDisparos: () => Promise<void>;
+  lancarRecebimento: (payload: {
+    tituloId: string; valorRecebido: number; forma: string; data: string; observacao?: string; parcial?: boolean;
+  }) => Promise<boolean>;
+  dispararMensagem: (tituloId: string, template: string) => Promise<boolean>;
+  importarCarteira: (clientes: Cliente[], titulos: Titulo[]) => Promise<boolean>;
   toasts: Toast[];
   addToast: (message: string, type?: Toast["type"]) => void;
   getCliente: (id: string) => Cliente;
@@ -33,6 +42,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [recebimentos, setRecebimentosState] = useState<Recebimento[]>([]);
   const [disparos, setDisparosState] = useState<Disparo[]>([]);
   const [templates, setTemplatesState] = useState<Template[]>(mockTemplates);
+  const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const setClientes = useCallback((fn: (prev: Cliente[]) => Cliente[]) => setClientesState(fn), []);
@@ -48,6 +58,105 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getCliente = useCallback((id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" }, [clientes]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [tits, clis, recs, disps] = await Promise.all([
+          apiFetch("/api/titulos"),
+          apiFetch("/api/clientes"),
+          apiFetch("/api/recebimentos"),
+          apiFetch("/api/disparos"),
+        ]);
+        setTitulosState(await tits.json());
+        setClientesState(await clis.json());
+        setRecebimentosState(await recs.json());
+        setDisparosState(await disps.json());
+      } catch {
+        addToast("Erro ao conectar com o servidor. Usando dados locais.", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const refetchTitulos = async () => {
+    const data = await apiFetch("/api/titulos");
+    setTitulosState(await data.json());
+  };
+
+  const refetchDisparos = async () => {
+    const data = await apiFetch("/api/disparos");
+    setDisparosState(await data.json());
+  };
+
+  const lancarRecebimento = async (payload: {
+    tituloId: string; valorRecebido: number; forma: string; data: string; observacao?: string; parcial?: boolean;
+  }): Promise<boolean> => {
+    try {
+      const res = await apiFetch("/api/recebimentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addToast(data.error || "Erro ao lançar recebimento", "error");
+        return false;
+      }
+      await refetchTitulos();
+      addToast("Recebimento lançado com sucesso! ✅");
+      return true;
+    } catch {
+      addToast("Erro de conexão ao lançar recebimento", "error");
+      return false;
+    }
+  };
+
+  const dispararMensagem = async (tituloId: string, template: string): Promise<boolean> => {
+    try {
+      const res = await apiFetch("/api/disparos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tituloId, template }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        addToast(`Falha no disparo: ${data.error || "Erro desconhecido"}`, "error");
+        await refetchDisparos();
+        return false;
+      }
+      addToast("Mensagem enviada via WhatsApp! 📱");
+      await refetchDisparos();
+      return true;
+    } catch {
+      addToast("Erro de conexão ao disparar mensagem", "error");
+      return false;
+    }
+  };
+
+  const importarCarteira = async (clientesPayload: Cliente[], titulosPayload: Titulo[]): Promise<boolean> => {
+    try {
+      const res = await apiFetch("/api/importar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientes: clientesPayload, titulos: titulosPayload }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addToast(data.error || "Erro na importação", "error");
+        return false;
+      }
+      await Promise.all([refetchTitulos()]);
+      const clis = await apiFetch("/api/clientes");
+      setClientesState(await clis.json());
+      addToast(`Importados: ${data.clientesSalvos} clientes, ${data.titulosSalvos} títulos (${data.duplicados} duplicados ignorados) ✅`);
+      return true;
+    } catch {
+      addToast("Erro de conexão na importação", "error");
+      return false;
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -86,6 +195,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       recebimentos, setRecebimentos,
       disparos, setDisparos,
       templates, setTemplates,
+      loading,
+      refetchTitulos,
+      refetchDisparos,
+      lancarRecebimento,
+      dispararMensagem,
+      importarCarteira,
       toasts, addToast, getCliente,
     }}>
       {children}

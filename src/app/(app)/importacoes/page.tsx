@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { brl } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import { parseCsvText, buildCarteiraFromRows } from "@/lib/csv";
 import type { Carteira } from "@/types";
 
@@ -38,7 +39,7 @@ export default function ImportacoesPage() {
     
     try {
       // Enviar para MongoDB Atlas via API
-      const res = await fetch("/api/titulos", {
+      const res = await apiFetch("/api/titulos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -47,15 +48,10 @@ export default function ImportacoesPage() {
         }),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Erro ao salvar no banco de dados");
-      }
+      const result = await res.json();
 
-      // Atualizar localStorage também
-      const existingIds = new Set(clientes.map(c => c.id));
-      const novos = carteira.clientes.filter(c => !existingIds.has(c.id));
-      setClientes(p => [...p, ...novos]);
+      // Atualizar estado local com dados do backend
+      setClientes(p => [...p, ...carteira.clientes]);
       setTitulos(p => [...p, ...carteira.titulos]);
       
       addToast(`✅ Importados para o Atlas: ${carteira.clientes.length} clientes, ${carteira.titulos.length} títulos`);
@@ -64,7 +60,9 @@ export default function ImportacoesPage() {
       setRawCount(0);
     } catch (error) {
       console.error("Erro ao importar:", error);
-      addToast(error instanceof Error ? error.message : "Erro ao importar para o banco", "error");
+      const msg = error instanceof Error ? error.message : "Erro ao importar para o banco";
+      addToast(msg, "error");
+      console.error("Detalhes do erro:", error);
     } finally {
       setImportando(false);
     }
@@ -77,14 +75,9 @@ export default function ImportacoesPage() {
 
     setLimpando(true);
     try {
-      const res = await fetch(`/api/titulos?data=${hoje}`, {
+      const res = await apiFetch(`/api/titulos?data=${hoje}`, {
         method: "DELETE",
       });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Erro ao limpar títulos");
-      }
 
       const result = await res.json();
       addToast(`🗑️ ${result.deletedCount} títulos excluídos do Atlas`);
@@ -94,7 +87,9 @@ export default function ImportacoesPage() {
       setClientes(() => []);
     } catch (error) {
       console.error("Erro ao limpar:", error);
-      addToast(error instanceof Error ? error.message : "Erro ao limpar títulos", "error");
+      const msg = error instanceof Error ? error.message : "Erro ao limpar títulos";
+      addToast(msg, "error");
+      console.error("Detalhes do erro:", error);
     } finally {
       setLimpando(false);
     }

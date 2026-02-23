@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { brl, fmtDate } from "@/lib/utils";
+import { brl } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import { buildMensagemCobranca } from "@/lib/templates";
 import type { Titulo } from "@/types";
 
@@ -190,7 +191,7 @@ export default function TitulosPage() {
 
   const sincronizarTitulos = async () => {
     try {
-      const res = await fetch("/api/titulos");
+      const res = await apiFetch("/api/titulos");
       if (!res.ok) throw new Error("Não foi possível atualizar os títulos");
       const titulosApi: Titulo[] = await res.json();
       setTitulos(() => titulosApi);
@@ -210,7 +211,7 @@ export default function TitulosPage() {
 
     setEnviandoIndividual(true);
     try {
-      const res = await fetch("/api/disparos", {
+      const res = await apiFetch("/api/disparos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tituloId: tituloBase.id, template: templatePadrao }),
@@ -249,7 +250,7 @@ export default function TitulosPage() {
       const tituloBase = grupo.titulos[0];
       if (!tituloBase) continue;
       try {
-        const res = await fetch("/api/disparos", {
+        const res = await apiFetch("/api/disparos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ tituloId: tituloBase.id, template: templateSelecionado }),
