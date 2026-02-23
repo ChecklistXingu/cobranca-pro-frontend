@@ -1,5 +1,8 @@
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
+console.log("[API] NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL);
+console.log("[API] BASE_URL:", BASE_URL);
+
 function ensureBaseUrl() {
   if (!BASE_URL) {
     console.error("[API] NEXT_PUBLIC_API_URL não configurada!");
