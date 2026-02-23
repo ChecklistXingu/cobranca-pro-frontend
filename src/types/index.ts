@@ -1,6 +1,7 @@
 // ─── CLIENTE ────────────────────────────────────────────────────────────────
 export interface Cliente {
   _id?: string;
+  id?: string;
   nome: string;
   telefone?: string;
   documento?: string;
@@ -11,6 +12,7 @@ export interface Cliente {
 // ─── TITULO ─────────────────────────────────────────────────────────────────
 export interface Titulo {
   _id?: string;
+  id?: string;
   clienteId: string;
   numeroNF: string;
   numeroTitulo?: string;
@@ -30,6 +32,7 @@ export interface Titulo {
 // ─── RECEBIMENTO ─────────────────────────────────────────────────────────────
 export interface Recebimento {
   _id?: string;
+  id?: string;
   tituloId: string;
   data: string;
   valorRecebido: number;
@@ -42,6 +45,7 @@ export interface Recebimento {
 // ─── DISPARO ─────────────────────────────────────────────────────────────────
 export interface Disparo {
   _id?: string;
+  id?: string;
   clienteId: string;
   tituloId: string;
   status: "ENVIADO" | "FALHOU" | "PENDENTE";
