@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 
 interface HistoricoDisparo {
   id: string;
@@ -53,7 +54,7 @@ export default function HistoricoPage() {
       const params = new URLSearchParams();
       if (dataInicio) params.set("inicio", dataInicio);
       if (dataFim) params.set("fim", dataFim);
-      const res = await fetch(`/api/disparos?${params.toString()}`);
+      const res = await apiFetch(`/api/disparos?${params.toString()}`);
       if (!res.ok) throw new Error("Não foi possível carregar o histórico de disparos");
       const payload: HistoricoDisparo[] = await res.json();
       setHistorico(payload);
