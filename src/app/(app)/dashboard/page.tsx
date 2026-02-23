@@ -8,6 +8,14 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 
 const formatInputDate = (date: Date) => date.toISOString().split("T")[0];
 
+const parseLocalDate = (value: string | null) => {
+  if (!value) return null;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month - 1, day);
+};
+
 export default function DashboardPage() {
   const { titulos, setTitulos, setClientes, getCliente, disparos, setDisparos, addToast } = useStore();
   const now = new Date();
@@ -57,13 +65,13 @@ export default function DashboardPage() {
     const filtrados = titulos.filter(t => {
       if (!t.createdAt) return true;
       const tituloDate = new Date(t.createdAt);
-      
-      const inicio = dataInicio ? new Date(dataInicio) : null;
+
+      const inicio = parseLocalDate(dataInicio);
       if (inicio) inicio.setHours(0, 0, 0, 0);
-      
-      const fim = dataFim ? new Date(dataFim) : null;
+
+      const fim = parseLocalDate(dataFim);
       if (fim) fim.setHours(23, 59, 59, 999);
-      
+
       if (inicio && tituloDate < inicio) return false;
       if (fim && tituloDate > fim) return false;
       return true;
