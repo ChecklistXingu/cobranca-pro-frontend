@@ -1,67 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Disparo, Titulo, Cliente } from "@/lib/models";
-import { enviarMensagem } from "@/lib/zapi";
-import type { Titulo as TituloType } from "@/types";
-import { buildMensagemCobranca } from "@/lib/templates";
+import { enviarMensagem, aplicarTemplate } from "@/lib/zapi";
 
-const TEMPLATES = ["1º Aviso", "Vencido", "2º Aviso", "Pós-vencimento"];
+// Templates padrão (podem ser personalizados no futuro via banco)
+const TEMPLATES: Record<string, string> = {
+  "1º Aviso": "Olá {cliente}! Identificamos que o título {numeroNF} está prestes a vencer. Valor total: {total}. Entre em contato para evitar juros. 🙏",
+  "Vencido": "Olá {cliente}. Seu título {numeroNF} está vencido há {diasAtraso} dias. Valor total: {total}. Por favor, regularize o quanto antes! ⚠️",
+  "2º Aviso": "{cliente}, ainda não identificamos o pagamento do título {numeroNF}. Valor: {total}. Entre em contato urgente. 📞",
+  "Pós-vencimento": "Aviso final: {cliente}, o título {numeroNF} está em atraso há {diasAtraso} dias. Total: {total}. Regularize para evitar protesto. ❌",
+};
 
+// GET /api/disparos  ← Lista todos os disparos
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
-    const inicio = searchParams.get("inicio");
-    const fim = searchParams.get("fim");
 
-    const query: Record<string, unknown> = {};
-    if (status) query.status = status;
-
-    if (inicio || fim) {
-      const createdAt: Record<string, Date> = {};
-      if (inicio) {
-        createdAt.$gte = new Date(`${inicio}T00:00:00.000Z`);
-      }
-      if (fim) {
-        createdAt.$lte = new Date(`${fim}T23:59:59.999Z`);
-      }
-      query.createdAt = createdAt;
-    }
-
+    const query = status ? { status } : {};
     const disparos = await Disparo.find(query)
       .populate("clienteId", "nome telefone")
       .populate("tituloId", "numeroNF total diasAtraso")
       .sort({ createdAt: -1 })
       .lean();
 
-    const payload = disparos.map(item => {
-      const cliente = item.clienteId as any;
-      const titulo = item.tituloId as any;
-      const clienteId = cliente?._id ? String(cliente._id) : String(item.clienteId ?? "");
-      const tituloId = titulo?._id ? String(titulo._id) : String(item.tituloId ?? "");
-
-      return {
-        id: String(item._id ?? item.id ?? item._id?.toString?.() ?? ""),
-        clienteId,
-        clienteNome: cliente?.nome ?? "—",
-        clienteTelefone: cliente?.telefone ?? "",
-        tituloId,
-        numeroNF: titulo?.numeroNF ?? "",
-        totalTitulo: titulo?.total ?? null,
-        status: item.status ?? "PENDENTE",
-        template: item.template ?? "",
-        resposta: item.resposta ?? item.mensagemEnviada ?? "",
-        data: (item.createdAt ?? item.updatedAt ?? new Date()).toISOString(),
-      };
-    });
-
-    return NextResponse.json(payload);
+    return NextResponse.json(disparos);
   } catch (err) {
     return NextResponse.json({ error: "Erro ao buscar disparos" }, { status: 500 });
   }
 }
 
+// POST /api/disparos  ← Envia disparo via Z-API
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -69,15 +39,19 @@ export async function POST(req: NextRequest) {
     const { tituloId, template: templateNome } = body;
 
     if (!tituloId || !templateNome) {
-      return NextResponse.json({ error: "tituloId e template são obrigatórios" }, { status: 400 });
+      return NextResponse.json(
+        { error: "tituloId e template são obrigatórios" },
+        { status: 400 }
+      );
     }
 
-    const tituloBase = await Titulo.findOne({ id: tituloId }).lean();
-    if (!tituloBase) {
+    // Busca título e cliente
+    const titulo = await Titulo.findById(tituloId).lean() as any;
+    if (!titulo) {
       return NextResponse.json({ error: "Título não encontrado" }, { status: 404 });
     }
 
-    const cliente = await Cliente.findOne({ id: tituloBase.clienteId }).lean();
+    const cliente = await Cliente.findById(titulo.clienteId).lean() as any;
     if (!cliente) {
       return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
     }
@@ -86,61 +60,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Cliente sem telefone cadastrado" }, { status: 400 });
     }
 
-    const titulosDoCliente = await Titulo.find({ clienteId: cliente.id, status: { $in: ["ABERTO", "VENCIDO", "NEGOCIADO"] } })
-      .sort({ vencimento: 1 })
-      .lean();
-
-    const titulosParaMensagem = titulosDoCliente.length ? titulosDoCliente : [tituloBase];
-
-    const payloadTitulos: Array<Pick<TituloType, "numeroNF" | "numeroTitulo" | "vencimento" | "valorPrincipal" | "juros" | "total" | "diasAtraso">> = titulosParaMensagem.map(t => ({
-      numeroNF: t.numeroNF,
-      numeroTitulo: t.numeroTitulo,
-      vencimento: t.vencimento,
-      valorPrincipal: t.valorPrincipal,
-      juros: t.juros,
-      total: t.total,
-      diasAtraso: t.diasAtraso,
-    }));
-
-    const mensagem = buildMensagemCobranca(payloadTitulos, cliente.nome, templateNome);
-
-    const disparoId = `disp_${Math.random().toString(16).slice(2)}_${Date.now()}`;
-    const disparo = await Disparo.create({
-      id: disparoId,
-      clienteId: cliente.id,
-      tituloId: tituloBase.id,
-      status: "PENDENTE",
-      data: new Date().toISOString(),
-      template: templateNome,
-      resposta: "",
+    // Monta mensagem
+    const templateTexto = TEMPLATES[templateNome] || TEMPLATES["Vencido"];
+    const mensagem = aplicarTemplate(templateTexto, {
+      cliente: cliente.nome,
+      numeroNF: titulo.numeroNF,
+      total: Number(titulo.total).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      diasAtraso: titulo.diasAtraso,
     });
 
+    // Cria registro PENDENTE no banco
+    const disparo = await Disparo.create({
+      clienteId: cliente._id,
+      tituloId: titulo._id,
+      status: "PENDENTE",
+      template: templateNome,
+      mensagemEnviada: mensagem,
+    });
+
+    // Envia via Z-API
     const resultado = await enviarMensagem(cliente.telefone, mensagem);
 
+    // Atualiza status do disparo com resultado
     const novoStatus = resultado.success ? "ENVIADO" : "FALHOU";
-    await Disparo.findOneAndUpdate(
-      { id: disparoId },
-      {
-        status: novoStatus,
-        resposta: resultado.success ? `zaapId: ${resultado.zaapId}` : resultado.error,
-      }
-    );
+    await Disparo.findByIdAndUpdate(disparo._id, {
+      status: novoStatus,
+      resposta: resultado.success
+        ? `zaapId: ${resultado.zaapId}`
+        : resultado.error,
+    });
 
+    // Atualiza data do último disparo no título
     if (resultado.success) {
-      const tituloIds = titulosParaMensagem.map(t => t.id);
-      await Titulo.updateMany(
-        { id: { $in: tituloIds } },
-        { ultimoDisparo: new Date().toISOString() }
-      );
+      await Titulo.findByIdAndUpdate(tituloId, { ultimoDisparo: new Date() });
     }
 
     return NextResponse.json({
       ok: resultado.success,
       status: novoStatus,
-      disparo: disparoId,
+      disparo: disparo._id,
       zaapId: resultado.zaapId,
       error: resultado.error,
     }, { status: resultado.success ? 200 : 422 });
+
   } catch (err) {
     return NextResponse.json({ error: "Erro interno ao disparar mensagem" }, { status: 500 });
   }
