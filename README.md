@@ -1,15 +1,15 @@
-# 🌾 Cobrança Pro — Plataforma de Gestão de Títulos
+# 🌾 Cobrança Pro — Frontend
 
-Sistema SaaS profissional de cobrança de títulos para empresa de peças agrícolas.
+Interface de gestão de títulos e cobranças para empresa de peças agrícolas.
 
 ## 🚀 Stack
 
-- **Next.js 14** (App Router + API Routes)
+- **Next.js 14** (App Router)
 - **TypeScript**
 - **TailwindCSS**
-- **MongoDB Atlas** (via Mongoose)
-- **Z-API** (disparo WhatsApp real)
+- **React Hook Form** (formulários)
 - **Recharts** (gráficos)
+- **Radix UI** (componentes)
 
 ---
 

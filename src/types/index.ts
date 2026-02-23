@@ -1,65 +1,56 @@
-// ─── CLIENTE ────────────────────────────────────────────────────────────────
+export type TituloStatus = "ABERTO" | "VENCIDO" | "RECEBIDO" | "NEGOCIADO" | "CANCELADO";
+export type FormaRecebimento = "PIX" | "DINHEIRO" | "BOLETO" | "TRANSFERENCIA" | "OUTRO";
+export type DisparoStatus = "ENVIADO" | "FALHOU" | "PENDENTE";
+
 export interface Cliente {
-  _id?: string;
-  id?: string;
+  id: string;
   nome: string;
   telefone?: string;
   documento?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
-// ─── TITULO ─────────────────────────────────────────────────────────────────
 export interface Titulo {
-  _id?: string;
-  id?: string;
+  id: string;
   clienteId: string;
   numeroNF: string;
   numeroTitulo?: string;
+  vencimento?: string | null;
   valorPrincipal: number;
   juros: number;
   total: number;
   diasAtraso: number;
-  vencimento?: string;
-  status: "ABERTO" | "VENCIDO" | "RECEBIDO" | "NEGOCIADO" | "CANCELADO";
+  status: TituloStatus;
   chaveMatch: string;
-  ultimoDisparo?: string;
-  dataCobranca?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt: string;
+  ultimoDisparo?: string | null;
 }
 
-// ─── RECEBIMENTO ─────────────────────────────────────────────────────────────
 export interface Recebimento {
-  _id?: string;
-  id?: string;
+  id: string;
   tituloId: string;
   data: string;
   valorRecebido: number;
-  forma: "PIX" | "DINHEIRO" | "BOLETO" | "TRANSFERENCIA" | "OUTRO";
+  forma: FormaRecebimento;
   observacao?: string;
-  createdAt?: string;
-  updatedAt?: string;
 }
 
-// ─── DISPARO ─────────────────────────────────────────────────────────────────
 export interface Disparo {
-  _id?: string;
-  id?: string;
+  id: string;
   clienteId: string;
   tituloId: string;
-  status: "ENVIADO" | "FALHOU" | "PENDENTE";
+  status: DisparoStatus;
+  data: string;
   template: string;
-  mensagemEnviada?: string;
-  resposta?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  resposta: string;
 }
 
-// ─── TEMPLATE ────────────────────────────────────────────────────────────────
 export interface Template {
   id: string;
   nome: string;
-  conteudo: string;
-  tipo: "COBRANCA" | "CONFIRMACAO" | "NEGOCIACAO" | "OUTRO";
+  mensagem: string;
+}
+
+export interface Carteira {
+  clientes: Cliente[];
+  titulos: Titulo[];
 }
