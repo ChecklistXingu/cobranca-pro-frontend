@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
-import { brl } from "@/lib/utils";
+import { brl, fmtDate } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { buildMensagemCobranca } from "@/lib/templates";
 import type { Titulo } from "@/types";
