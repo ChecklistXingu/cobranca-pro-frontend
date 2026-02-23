@@ -39,7 +39,7 @@ export default function ImportacoesPage() {
     
     try {
       // Enviar para MongoDB Atlas via API
-      const res = await apiFetch("/api/titulos", {
+      const res = await apiFetch("/api/importar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
