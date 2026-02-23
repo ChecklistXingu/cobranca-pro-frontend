@@ -58,10 +58,10 @@ export default function DashboardPage() {
   }, [titulos, dataInicio, dataFim]);
 
   const stats = useMemo(() => {
-    const emAberto = titulosFiltrados.filter(t => t.status === "ABERTO").reduce((a, t) => a + t.total, 0);
-    const vencidos = titulosFiltrados.filter(t => t.status === "VENCIDO").reduce((a, t) => a + t.total, 0);
-    const recebido = titulosFiltrados.filter(t => t.status === "RECEBIDO").reduce((a, t) => a + t.total, 0);
-    const total = titulosFiltrados.reduce((a, t) => a + t.total, 0);
+    const emAberto = titulosFiltrados.filter(t => t.status === "ABERTO").reduce((a, t) => a + Number(t.total || 0), 0);
+    const vencidos = titulosFiltrados.filter(t => t.status === "VENCIDO").reduce((a, t) => a + Number(t.total || 0), 0);
+    const recebido = titulosFiltrados.filter(t => t.status === "RECEBIDO").reduce((a, t) => a + Number(t.total || 0), 0);
+    const total = titulosFiltrados.reduce((a, t) => a + Number(t.total || 0), 0);
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
     const disparosEnviados = disparos.filter(d => d.status === "ENVIADO").length;
 
@@ -69,10 +69,10 @@ export default function DashboardPage() {
       { name: "Aberto", value: emAberto, color: "#3B82F6" },
       { name: "Vencido", value: vencidos, color: "#EF4444" },
       { name: "Recebido", value: recebido, color: "#10B981" },
-      { name: "Negociado", value: titulos.filter(t => t.status === "NEGOCIADO").reduce((a, t) => a + t.total, 0), color: "#8B5CF6" },
+      { name: "Negociado", value: titulos.filter(t => t.status === "NEGOCIADO").reduce((a, t) => a + Number(t.total || 0), 0), color: "#8B5CF6" },
     ];
 
-    const topAtraso = [...titulosFiltrados].filter(t => t.diasAtraso > 0).sort((a, b) => b.total - a.total).slice(0, 5);
+    const topAtraso = [...titulosFiltrados].filter(t => t.diasAtraso > 0).sort((a, b) => Number(b.total || 0) - Number(a.total || 0)).slice(0, 5);
 
     // Dynamic line data based on real titles
     const lineData = titulosFiltrados.length > 0 ? [
@@ -91,10 +91,10 @@ export default function DashboardPage() {
 
     // Dynamic bar data based on overdue titles
     const barData = titulosFiltrados.length > 0 ? [
-      { faixa: "0–7d", valor: titulosFiltrados.filter(t => t.diasAtraso > 0 && t.diasAtraso <= 7).reduce((a, t) => a + t.total, 0), fill: "#F59E0B" },
-      { faixa: "8–15d", valor: titulosFiltrados.filter(t => t.diasAtraso > 7 && t.diasAtraso <= 15).reduce((a, t) => a + t.total, 0), fill: "#F97316" },
-      { faixa: "16–30d", valor: titulosFiltrados.filter(t => t.diasAtraso > 15 && t.diasAtraso <= 30).reduce((a, t) => a + t.total, 0), fill: "#EF4444" },
-      { faixa: "30+d", valor: titulosFiltrados.filter(t => t.diasAtraso > 30).reduce((a, t) => a + t.total, 0), fill: "#991B1B" },
+      { faixa: "0–7d", valor: titulosFiltrados.filter(t => t.diasAtraso > 0 && t.diasAtraso <= 7).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#F59E0B" },
+      { faixa: "8–15d", valor: titulosFiltrados.filter(t => t.diasAtraso > 7 && t.diasAtraso <= 15).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#F97316" },
+      { faixa: "16–30d", valor: titulosFiltrados.filter(t => t.diasAtraso > 15 && t.diasAtraso <= 30).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#EF4444" },
+      { faixa: "30+d", valor: titulosFiltrados.filter(t => t.diasAtraso > 30).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#991B1B" },
     ] : [
       { faixa: "0–7d", valor: 0, fill: "#F59E0B" },
       { faixa: "8–15d", valor: 0, fill: "#F97316" },
