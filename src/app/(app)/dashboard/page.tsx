@@ -1,17 +1,48 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const formatInputDate = (date: Date) => date.toISOString().split("T")[0];
 
 export default function DashboardPage() {
-  const { titulos, getCliente, disparos } = useStore();
+  const { titulos, setTitulos, getCliente, disparos, setDisparos } = useStore();
   const now = new Date();
   const [dataInicio, setDataInicio] = useState(() => formatInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [dataFim, setDataFim] = useState(() => formatInputDate(now));
+  const [carregando, setCarregando] = useState(true);
+
+  // Carregar dados do Atlas ao montar o componente
+  useEffect(() => {
+    const carregarDados = async () => {
+      try {
+        setCarregando(true);
+        
+        // Buscar títulos
+        const resTitulos = await apiFetch("/api/titulos");
+        if (resTitulos.ok) {
+          const titulosData = await resTitulos.json();
+          setTitulos(titulosData);
+        }
+
+        // Buscar disparos
+        const resDisparos = await apiFetch("/api/disparos");
+        if (resDisparos.ok) {
+          const disparosData = await resDisparos.json();
+          setDisparos(disparosData);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+      } finally {
+        setCarregando(false);
+      }
+    };
+
+    carregarDados();
+  }, [setTitulos, setDisparos]);
 
   const titulosFiltrados = useMemo(() => {
     if (!dataInicio && !dataFim) return titulos;
