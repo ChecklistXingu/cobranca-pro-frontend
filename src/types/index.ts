@@ -14,6 +14,7 @@ export interface Titulo {
   clienteId: string;
   numeroNF: string;
   numeroTitulo?: string;
+  vencimento?: string | null;
   valorPrincipal: number;
   juros: number;
   total: number;

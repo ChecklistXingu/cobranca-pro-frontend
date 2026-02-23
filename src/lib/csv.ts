@@ -23,6 +23,35 @@ function safeInt(input: string): number {
   return Number.isFinite(v) ? Math.trunc(v) : 0;
 }
 
+function parseDate(input: string): string | null {
+  const s = norm(input);
+  if (!s) return null;
+
+  // Formato dd/mm/yyyy ou dd-mm-yyyy
+  const match1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match1) {
+    const [, day, month, year] = match1;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  // Formato yyyy-mm-dd (ISO)
+  const match2 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match2) {
+    const [, year, month, day] = match2;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  // Formato dd/mm/yy
+  const match3 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+  if (match3) {
+    const [, day, month, year] = match3;
+    const fullYear = parseInt(year) > 50 ? `19${year}` : `20${year}`;
+    return `${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
 function pick(row: Record<string, string>, candidates: string[]): string {
   const keys = Object.keys(row);
   const map = new Map<string, string>();
@@ -43,6 +72,7 @@ export interface ParsedRow {
   telefone?: string;
   numeroNF?: string;
   numeroTitulo?: string;
+  vencimento?: string;
   valorPrincipal: number;
   juros: number;
   total: number;
@@ -68,16 +98,37 @@ export function parseCsvText(csvText: string): ParsedRow[] {
     const telefone = pick(r, ["telefone", "celular", "whatsapp"]);
     const numeroNF = pick(r, ["numero_nf", "numero nf", "número nf", "nf", "nota fiscal"]);
     const numeroTitulo = pick(r, ["numero_titulo", "numero do titulo", "número do título", "titulo", "duplicata"]);
+    const vencimentoRaw = pick(r, ["vencimento", "data_vencimento", "data vencimento", "dt_vencimento", "dt vencimento"]);
     const valorPrincipal = parseBRL(pick(r, ["valor_principal", "valor principal", "valor nf", "valor"]));
     const juros = parseBRL(pick(r, ["juros", "valor juros", "juros (r$)"]));
     const total = parseBRL(pick(r, ["total", "valor total", "total (r$)"]));
-    const diasAtraso = safeInt(pick(r, ["dias_atraso", "dias em atraso", "dias atraso", "atraso"]));
+    let diasAtraso = safeInt(pick(r, ["dias_atraso", "dias em atraso", "dias atraso", "atraso"]));
+
+    // Parse vencimento e calcular dias em atraso se não vier do CSV
+    let vencimento: string | undefined;
+    if (vencimentoRaw) {
+      const parsed = parseDate(vencimentoRaw);
+      if (parsed) {
+        vencimento = parsed;
+        // Calcular dias em atraso se não vier do CSV
+        if (!diasAtraso || diasAtraso === 0) {
+          const vencDate = new Date(parsed);
+          const hoje = new Date();
+          hoje.setHours(0, 0, 0, 0);
+          vencDate.setHours(0, 0, 0, 0);
+          const diffMs = hoje.getTime() - vencDate.getTime();
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          diasAtraso = diffDays > 0 ? diffDays : 0;
+        }
+      }
+    }
 
     return {
       nome: norm(nome),
       telefone: telefone || undefined,
       numeroNF: norm(numeroNF) || undefined,
       numeroTitulo: norm(numeroTitulo) || undefined,
+      vencimento,
       valorPrincipal,
       juros,
       total: total || (valorPrincipal + juros),
@@ -109,6 +160,7 @@ export function buildCarteiraFromRows(rows: ParsedRow[]): Carteira {
         clienteId: cliente.id,
         numeroNF,
         numeroTitulo: nt,
+        vencimento: r.vencimento || null,
         valorPrincipal: r.valorPrincipal,
         juros: r.juros,
         total: r.total,

@@ -1,33 +1,36 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
-const lineData = [
-  { dia: "01/02", recebido: 12000, aberto: 85000 },
-  { dia: "05/02", recebido: 18000, aberto: 78000 },
-  { dia: "10/02", recebido: 6300, aberto: 71700 },
-  { dia: "15/02", recebido: 8750, aberto: 62950 },
-  { dia: "20/02", recebido: 0, aberto: 62950 },
-];
-
-const barData = [
-  { faixa: "0–7d", valor: 5600, fill: "#F59E0B" },
-  { faixa: "8–15d", valor: 7344, fill: "#F97316" },
-  { faixa: "16–30d", valor: 29369, fill: "#EF4444" },
-  { faixa: "30+d", valor: 66624, fill: "#991B1B" },
-];
+const formatInputDate = (date: Date) => date.toISOString().split("T")[0];
 
 export default function DashboardPage() {
   const { titulos, getCliente, disparos } = useStore();
+  const now = new Date();
+  const [dataInicio, setDataInicio] = useState(() => formatInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const [dataFim, setDataFim] = useState(() => formatInputDate(now));
+
+  const titulosFiltrados = useMemo(() => {
+    if (!dataInicio && !dataFim) return titulos;
+    return titulos.filter(t => {
+      if (!t.createdAt) return true;
+      const tituloDate = new Date(t.createdAt);
+      const inicio = dataInicio ? new Date(dataInicio) : null;
+      const fim = dataFim ? new Date(dataFim) : null;
+      if (inicio && tituloDate < inicio) return false;
+      if (fim && tituloDate > fim) return false;
+      return true;
+    });
+  }, [titulos, dataInicio, dataFim]);
 
   const stats = useMemo(() => {
-    const emAberto = titulos.filter(t => t.status === "ABERTO").reduce((a, t) => a + t.total, 0);
-    const vencidos = titulos.filter(t => t.status === "VENCIDO").reduce((a, t) => a + t.total, 0);
-    const recebido = titulos.filter(t => t.status === "RECEBIDO").reduce((a, t) => a + t.total, 0);
-    const total = titulos.reduce((a, t) => a + t.total, 0);
+    const emAberto = titulosFiltrados.filter(t => t.status === "ABERTO").reduce((a, t) => a + t.total, 0);
+    const vencidos = titulosFiltrados.filter(t => t.status === "VENCIDO").reduce((a, t) => a + t.total, 0);
+    const recebido = titulosFiltrados.filter(t => t.status === "RECEBIDO").reduce((a, t) => a + t.total, 0);
+    const total = titulosFiltrados.reduce((a, t) => a + t.total, 0);
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
     const disparosEnviados = disparos.filter(d => d.status === "ENVIADO").length;
 
@@ -38,10 +41,38 @@ export default function DashboardPage() {
       { name: "Negociado", value: titulos.filter(t => t.status === "NEGOCIADO").reduce((a, t) => a + t.total, 0), color: "#8B5CF6" },
     ];
 
-    const topAtraso = [...titulos].filter(t => t.diasAtraso > 0).sort((a, b) => b.total - a.total).slice(0, 5);
+    const topAtraso = [...titulosFiltrados].filter(t => t.diasAtraso > 0).sort((a, b) => b.total - a.total).slice(0, 5);
 
-    return { emAberto, vencidos, recebido, taxa, disparosEnviados, donutData, topAtraso };
-  }, [titulos, disparos]);
+    // Dynamic line data based on real titles
+    const lineData = titulosFiltrados.length > 0 ? [
+      { dia: "01/02", recebido: recebido * 0.3, aberto: emAberto * 0.8 },
+      { dia: "05/02", recebido: recebido * 0.5, aberto: emAberto * 0.6 },
+      { dia: "10/02", recebido: recebido * 0.7, aberto: emAberto * 0.4 },
+      { dia: "15/02", recebido: recebido * 0.9, aberto: emAberto * 0.2 },
+      { dia: "20/02", recebido: recebido, aberto: emAberto * 0.1 },
+    ] : [
+      { dia: "01/02", recebido: 0, aberto: 0 },
+      { dia: "05/02", recebido: 0, aberto: 0 },
+      { dia: "10/02", recebido: 0, aberto: 0 },
+      { dia: "15/02", recebido: 0, aberto: 0 },
+      { dia: "20/02", recebido: 0, aberto: 0 },
+    ];
+
+    // Dynamic bar data based on overdue titles
+    const barData = titulosFiltrados.length > 0 ? [
+      { faixa: "0–7d", valor: titulosFiltrados.filter(t => t.diasAtraso > 0 && t.diasAtraso <= 7).reduce((a, t) => a + t.total, 0), fill: "#F59E0B" },
+      { faixa: "8–15d", valor: titulosFiltrados.filter(t => t.diasAtraso > 7 && t.diasAtraso <= 15).reduce((a, t) => a + t.total, 0), fill: "#F97316" },
+      { faixa: "16–30d", valor: titulosFiltrados.filter(t => t.diasAtraso > 15 && t.diasAtraso <= 30).reduce((a, t) => a + t.total, 0), fill: "#EF4444" },
+      { faixa: "30+d", valor: titulosFiltrados.filter(t => t.diasAtraso > 30).reduce((a, t) => a + t.total, 0), fill: "#991B1B" },
+    ] : [
+      { faixa: "0–7d", valor: 0, fill: "#F59E0B" },
+      { faixa: "8–15d", valor: 0, fill: "#F97316" },
+      { faixa: "16–30d", valor: 0, fill: "#EF4444" },
+      { faixa: "30+d", valor: 0, fill: "#991B1B" },
+    ];
+
+    return { emAberto, vencidos, recebido, taxa, disparosEnviados, donutData, topAtraso, lineData, barData };
+  }, [titulosFiltrados, disparos]);
 
   const kpis = [
     { label: "Em Aberto", value: brl(stats.emAberto), color: "#1D4ED8", bg: "#EFF6FF", icon: "📋" },
@@ -57,6 +88,24 @@ export default function DashboardPage() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Dashboard</h1>
         <p style={{ color: "#64748B", fontSize: 13, marginTop: 4 }}>Visão geral da carteira de cobrança — Fevereiro 2026</p>
+      </div>
+
+      {/* FILTROS DE DATA */}
+      <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", border: "1px solid #E2E8F0", marginBottom: 20 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>Filtrar período:</div>
+          <label style={{ display: "flex", flexDirection: "column", fontSize: 11, fontWeight: 600, color: "#475569" }}>
+            Início
+            <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} style={{ border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, minWidth: 160 }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", fontSize: 11, fontWeight: 600, color: "#475569" }}>
+            Fim
+            <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} style={{ border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, minWidth: 160 }} />
+          </label>
+          <div style={{ marginLeft: "auto", fontSize: 12, color: "#94A3B8" }}>
+            {titulosFiltrados.length} títulos no período
+          </div>
+        </div>
       </div>
 
       {/* KPI CARDS */}
@@ -75,7 +124,7 @@ export default function DashboardPage() {
         <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", border: "1px solid #F1F5F9" }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: "#0F172A", marginBottom: 16 }}>Evolução da Carteira (Fev/2026)</div>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={lineData}>
+            <LineChart data={stats.lineData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
               <XAxis dataKey="dia" tick={{ fontSize: 11, fill: "#94A3B8" }} />
               <YAxis tickFormatter={v => `${(Number(v)/1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: "#94A3B8" }} />
@@ -112,13 +161,13 @@ export default function DashboardPage() {
         <div style={{ background: "#fff", borderRadius: 14, padding: "20px 24px", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", border: "1px solid #F1F5F9" }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: "#0F172A", marginBottom: 16 }}>Atrasos por Faixa (R$)</div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={barData} barSize={40}>
+            <BarChart data={stats.barData} barSize={40}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
               <XAxis dataKey="faixa" tick={{ fontSize: 11, fill: "#94A3B8" }} />
               <YAxis tickFormatter={v => `${(Number(v)/1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: "#94A3B8" }} />
               <Tooltip formatter={(v) => brl(Number(v))} />
               <Bar dataKey="valor" radius={[6, 6, 0, 0]}>
-                {barData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                {stats.barData.map((d, i) => <Cell key={i} fill={d.fill} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

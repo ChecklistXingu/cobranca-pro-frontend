@@ -3,7 +3,20 @@
 import { useMemo, useState } from "react";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
+import { buildMensagemCobranca } from "@/lib/templates";
 import type { Titulo } from "@/types";
+
+type GrupoCliente = {
+  clienteId: string;
+  clienteNome: string;
+  clienteTelefone?: string | null;
+  titulos: Titulo[];
+  totalPrincipal: number;
+  totalJuros: number;
+  totalGeral: number;
+  ultimoDisparo: string | null;
+  maiorAtraso: number;
+};
 
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { label: string; bg: string; color: string; dot: string }> = {
@@ -93,16 +106,21 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: { open: boolean; titu
   );
 }
 
+const STATUS_OPTIONS = ["ABERTO", "VENCIDO", "RECEBIDO", "NEGOCIADO", "CANCELADO"] as const;
+
 export default function TitulosPage() {
-  const { titulos, setTitulos, getCliente, addToast } = useStore();
+  const { titulos, setTitulos, setClientes, getCliente, addToast, templates } = useStore();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("TODOS");
   const [filterFaixa, setFilterFaixa] = useState("TODAS");
-  const [detailTitulo, setDetailTitulo] = useState<Titulo | null>(null);
-  const [disparoTitulo, setDisparoTitulo] = useState<Titulo | null>(null);
+  const [grupoDetalhe, setGrupoDetalhe] = useState<GrupoCliente | null>(null);
+  const [disparoCliente, setDisparoCliente] = useState<GrupoCliente | null>(null);
   const [baixarTitulo, setBaixarTitulo] = useState<Titulo | null>(null);
+  const [disparandoLote, setDisparandoLote] = useState(false);
+  const [enviandoIndividual, setEnviandoIndividual] = useState(false);
+  const templatePadrao = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
 
-  const filtered = useMemo(() => titulos.filter(t => {
+  const filteredTitulos = useMemo(() => titulos.filter(t => {
     const c = getCliente(t.clienteId);
     const matchSearch = !search || c.nome.toLowerCase().includes(search.toLowerCase()) || t.numeroNF.includes(search) || (t.numeroTitulo ?? "").includes(search);
     const matchStatus = filterStatus === "TODOS" || t.status === filterStatus;
@@ -115,6 +133,53 @@ export default function TitulosPage() {
     return matchSearch && matchStatus && matchFaixa;
   }), [titulos, search, filterStatus, filterFaixa, getCliente]);
 
+  const gruposPorCliente = useMemo<GrupoCliente[]>(() => {
+    const agrupado = new Map<string, Titulo[]>();
+    filteredTitulos.forEach(titulo => {
+      const atuais = agrupado.get(titulo.clienteId) ?? [];
+      agrupado.set(titulo.clienteId, [...atuais, titulo]);
+    });
+
+    return Array.from(agrupado.entries()).map(([clienteId, lista]) => {
+      const cliente = getCliente(clienteId);
+      const ordenados = [...lista].sort((a, b) => {
+        if (a.vencimento && b.vencimento) {
+          return new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime();
+        }
+        return a.numeroNF.localeCompare(b.numeroNF);
+      });
+
+      const totalPrincipal = ordenados.reduce((sum, t) => sum + t.valorPrincipal, 0);
+      const totalJuros = ordenados.reduce((sum, t) => sum + t.juros, 0);
+      const totalGeral = ordenados.reduce((sum, t) => sum + t.total, 0);
+      const ultimoDisparo = ordenados.reduce<string | null>((latest, t) => {
+        if (!t.ultimoDisparo) return latest;
+        if (!latest) return t.ultimoDisparo;
+        return new Date(t.ultimoDisparo) > new Date(latest) ? t.ultimoDisparo : latest;
+      }, null);
+      const maiorAtraso = ordenados.reduce((max, t) => Math.max(max, t.diasAtraso ?? 0), 0);
+
+      return {
+        clienteId,
+        clienteNome: cliente.nome,
+        clienteTelefone: cliente.telefone,
+        titulos: ordenados,
+        totalPrincipal,
+        totalJuros,
+        totalGeral,
+        ultimoDisparo,
+        maiorAtraso,
+      };
+    });
+  }, [filteredTitulos, getCliente]);
+
+  const vencidosParaDisparo = useMemo(() => {
+    const grupos = gruposPorCliente.filter(grupo => 
+      grupo.titulos.some(t => t.status === "VENCIDO" || t.status === "ABERTO")
+    );
+    return grupos;
+  }, [gruposPorCliente]);
+
   const handleBaixar = (data: { valorRecebido: string; parcial: boolean }) => {
     if (!baixarTitulo) return;
     const novoStatus = (!data.parcial && parseFloat(data.valorRecebido) >= baixarTitulo.total) ? "RECEBIDO" as const : baixarTitulo.status;
@@ -123,24 +188,136 @@ export default function TitulosPage() {
     setBaixarTitulo(null);
   };
 
+  const sincronizarTitulos = async () => {
+    try {
+      const res = await fetch("/api/titulos");
+      if (!res.ok) throw new Error("Não foi possível atualizar os títulos");
+      const titulosApi: Titulo[] = await res.json();
+      setTitulos(() => titulosApi);
+    } catch (error) {
+      console.error("sync titulos", error);
+      addToast(error instanceof Error ? error.message : "Erro ao sincronizar títulos", "error");
+    }
+  };
+
+  const dispararIndividual = async () => {
+    if (!disparoCliente || enviandoIndividual) return;
+    const tituloBase = disparoCliente.titulos[0];
+    if (!tituloBase) {
+      addToast("Cliente sem títulos disponíveis", "error");
+      return;
+    }
+
+    setEnviandoIndividual(true);
+    try {
+      const res = await fetch("/api/disparos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tituloId: tituloBase.id, template: templatePadrao }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data?.ok === false) {
+        addToast(data?.error || "Falha ao enviar via Z-API", "error");
+      } else {
+        addToast("Mensagem enviada via Z-API! ✅");
+        await sincronizarTitulos();
+        setDisparoCliente(null);
+      }
+    } catch (error) {
+      console.error("erro disparo individual", error);
+      addToast("Erro ao enviar mensagem", "error");
+    } finally {
+      setEnviandoIndividual(false);
+    }
+  };
+
+  const dispararLote = async () => {
+    if (disparandoLote || vencidosParaDisparo.length === 0) {
+      addToast("Nenhum título vencido selecionado.", "error");
+      return;
+    }
+
+    const templateSelecionado =
+      templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
+
+    setDisparandoLote(true);
+    let sucesso = 0;
+    let falhas = 0;
+
+    for (const grupo of vencidosParaDisparo) {
+      const tituloBase = grupo.titulos[0];
+      if (!tituloBase) continue;
+      try {
+        const res = await fetch("/api/disparos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tituloId: tituloBase.id, template: templateSelecionado }),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.ok === false) {
+          falhas++;
+        } else {
+          sucesso++;
+        }
+      } catch (error) {
+        console.error("erro lote", error);
+        falhas++;
+      }
+    }
+
+    addToast(`Lote: ${sucesso} enviados, ${falhas} falhas${falhas ? " ⚠️" : " ✅"}`);
+    await sincronizarTitulos();
+    setDisparandoLote(false);
+  };
+
+  const limparTela = () => {
+    if (!titulos.length) {
+      addToast("Não há dados para limpar.", "info");
+      return;
+    }
+    setTitulos(() => []);
+    setClientes(() => []);
+    addToast("Tela de cobrança limpa. Importe um novo arquivo para preencher novamente.");
+  };
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Títulos</h1>
-          <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>{filtered.length} títulos encontrados</p>
+          <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>{filteredTitulos.length} títulos em {gruposPorCliente.length} clientes</p>
         </div>
+        <button
+          onClick={dispararLote}
+          disabled={disparandoLote || vencidosParaDisparo.length === 0}
+          style={{
+            background: disparandoLote ? "#a855f7" : vencidosParaDisparo.length === 0 ? "#cbd5f5" : "#7C3AED",
+            color: "#fff",
+            border: "none",
+            borderRadius: 10,
+            padding: "10px 22px",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: disparandoLote || vencidosParaDisparo.length === 0 ? "not-allowed" : "pointer",
+            boxShadow: "0 10px 20px rgba(124,58,237,0.2)",
+            transition: "background 0.2s",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {disparandoLote ? "Disparando..." : `📱 Disparar Lote (${vencidosParaDisparo.length})`}
+        </button>
       </div>
 
       {/* FILTERS */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "6px 12px", flex: 1, minWidth: 200, maxWidth: 300 }}>
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: "#94A3B8" }}><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cliente, NF..." style={{ border: "none", outline: "none", fontSize: 13, background: "none", width: "100%", color: "#334155" }} />
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: "8px 12px", fontSize: 13, color: "#334155", background: "#fff", outline: "none" }}>
           <option value="TODOS">Todos os status</option>
-          {["ABERTO", "VENCIDO", "RECEBIDO", "NEGOCIADO", "CANCELADO"].map(s => <option key={s} value={s}>{s}</option>)}
+          {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select value={filterFaixa} onChange={e => setFilterFaixa(e.target.value)} style={{ border: "1px solid #E2E8F0", borderRadius: 10, padding: "8px 12px", fontSize: 13, color: "#334155", background: "#fff", outline: "none" }}>
           <option value="TODAS">Todas as faixas</option>
@@ -149,6 +326,22 @@ export default function TitulosPage() {
           <option value="16-30">16–30 dias</option>
           <option value="30+">30+ dias</option>
         </select>
+        <button
+          onClick={limparTela}
+          style={{
+            border: "1px solid #FCA5A5",
+            borderRadius: 10,
+            background: "#FFF1F2",
+            color: "#B91C1C",
+            padding: "8px 14px",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          🧹 Limpar tela
+        </button>
       </div>
 
       {/* TABLE */}
@@ -157,33 +350,70 @@ export default function TitulosPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                {["Cliente", "Telefone", "Nº NF", "Nº Título", "Valor Principal", "Juros", "Total", "Atraso", "Status", "Último Disparo", "Ações"].map(h => (
-                  <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 700, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{h}</th>
+                {["Cliente", "Telefone", "Títulos", "Valor Principal", "Juros", "Total", "Atraso", "Status", "Último Disparo", "Ações"].map(h => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: "11px 14px",
+                      textAlign: "left",
+                      fontWeight: 700,
+                      color: "#475569",
+                      fontSize: 11,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.5,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {h}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t, idx) => {
-                const c = getCliente(t.clienteId);
+              {gruposPorCliente.map((grupo, idx) => {
+                const statusPrioridade = ["VENCIDO", "NEGOCIADO", "ABERTO", "RECEBIDO", "CANCELADO"];
+                const statusPrincipal = statusPrioridade.find(status => grupo.titulos.some(t => t.status === status)) ?? grupo.titulos[0]?.status ?? "ABERTO";
                 return (
-                  <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#fff" : "#FAFBFC" }}>
-                    <td style={{ padding: "11px 14px", fontWeight: 600, color: "#0F172A", whiteSpace: "nowrap" }}>{c.nome}</td>
-                    <td style={{ padding: "11px 14px", color: "#64748B", whiteSpace: "nowrap" }}>{c.telefone}</td>
-                    <td style={{ padding: "11px 14px", fontFamily: "monospace", color: "#1D4ED8", fontSize: 12, whiteSpace: "nowrap" }}>{t.numeroNF}</td>
-                    <td style={{ padding: "11px 14px", color: "#64748B", whiteSpace: "nowrap" }}>{t.numeroTitulo ?? "—"}</td>
-                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>{brl(t.valorPrincipal)}</td>
-                    <td style={{ padding: "11px 14px", color: t.juros > 0 ? "#B91C1C" : "#94A3B8", whiteSpace: "nowrap" }}>{brl(t.juros)}</td>
-                    <td style={{ padding: "11px 14px", fontWeight: 700, whiteSpace: "nowrap" }}>{brl(t.total)}</td>
-                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
-                      {t.diasAtraso > 0 ? <span style={{ color: t.diasAtraso > 30 ? "#B91C1C" : t.diasAtraso > 15 ? "#EA580C" : "#D97706", fontWeight: 600 }}>{t.diasAtraso}d</span> : <span style={{ color: "#10B981" }}>—</span>}
+                  <tr key={grupo.clienteId} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                    <td style={{ padding: "11px 14px", fontWeight: 700, color: "#0F172A", minWidth: 160 }}>{grupo.clienteNome}</td>
+                    <td style={{ padding: "11px 14px", color: "#64748B", whiteSpace: "nowrap" }}>{grupo.clienteTelefone ?? "—"}</td>
+                    <td style={{ padding: "11px 14px", color: "#334155" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {grupo.titulos.map((titulo, index) => (
+                          <div key={titulo.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 12 }}>
+                            <span style={{ fontWeight: 600, color: "#1D4ED8", fontFamily: "monospace" }}>{index + 1}) {titulo.numeroNF}</span>
+                            <span>Venc.: {fmtDate(titulo.vencimento)}</span>
+                            <span>Valor: {brl(titulo.valorPrincipal)}</span>
+                            <span>Juros: {brl(titulo.juros)}</span>
+                            <span>Total: {brl(titulo.total)}</span>
+                            <span>Atraso: {titulo.diasAtraso > 0 ? `${titulo.diasAtraso}d` : "—"}</span>
+                            {titulo.status !== "RECEBIDO" && (
+                              <button onClick={() => setBaixarTitulo(titulo)} style={{ border: "none", background: "#F5F3FF", color: "#5B21B6", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                                Baixar
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </td>
-                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}><StatusBadge status={t.status} /></td>
-                    <td style={{ padding: "11px 14px", color: "#94A3B8", fontSize: 12, whiteSpace: "nowrap" }}>{fmtDate(t.ultimoDisparo)}</td>
+                    <td style={{ padding: "11px 14px", fontWeight: 600 }}>{brl(grupo.totalPrincipal)}</td>
+                    <td style={{ padding: "11px 14px", color: grupo.totalJuros > 0 ? "#B91C1C" : "#94A3B8" }}>{brl(grupo.totalJuros)}</td>
+                    <td style={{ padding: "11px 14px", fontWeight: 700 }}>{brl(grupo.totalGeral)}</td>
+                    <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
+                      {grupo.maiorAtraso > 0 ? (
+                        <span style={{ color: grupo.maiorAtraso > 30 ? "#B91C1C" : grupo.maiorAtraso > 15 ? "#EA580C" : "#D97706", fontWeight: 600 }}>
+                          {grupo.maiorAtraso}d
+                        </span>
+                      ) : (
+                        <span style={{ color: "#10B981" }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "11px 14px" }}><StatusBadge status={statusPrincipal} /></td>
+                    <td style={{ padding: "11px 14px", color: "#94A3B8", fontSize: 12, whiteSpace: "nowrap" }}>{fmtDate(grupo.ultimoDisparo ?? undefined)}</td>
                     <td style={{ padding: "11px 14px", whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <button onClick={() => setDetailTitulo(t)} style={{ background: "#EFF6FF", color: "#1D4ED8", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Ver</button>
-                        <button onClick={() => setDisparoTitulo(t)} style={{ background: "#ECFDF5", color: "#065F46", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Disparar</button>
-                        {t.status !== "RECEBIDO" && <button onClick={() => setBaixarTitulo(t)} style={{ background: "#F5F3FF", color: "#5B21B6", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Baixar</button>}
+                        <button onClick={() => setGrupoDetalhe(grupo)} style={{ background: "#EFF6FF", color: "#1D4ED8", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Ver</button>
+                        <button onClick={() => setDisparoCliente(grupo)} style={{ background: "#ECFDF5", color: "#065F46", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Disparar</button>
                       </div>
                     </td>
                   </tr>
@@ -192,42 +422,89 @@ export default function TitulosPage() {
             </tbody>
           </table>
         </div>
-        {filtered.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94A3B8" }}>Nenhum título encontrado</div>}
+        {gruposPorCliente.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94A3B8" }}>Nenhum cliente encontrado</div>}
       </div>
 
       {/* DETAIL MODAL */}
-      <Modal open={!!detailTitulo} onClose={() => setDetailTitulo(null)} title="Detalhes do Título" width={480}>
-        {detailTitulo && (() => {
-          const c = getCliente(detailTitulo.clienteId);
-          return (
+      <Modal open={!!grupoDetalhe} onClose={() => setGrupoDetalhe(null)} title={grupoDetalhe ? `Detalhes - ${grupoDetalhe.clienteNome}` : ""} width={560}>
+        {grupoDetalhe && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ background: "#F8FAFC", borderRadius: 10, padding: 12, fontSize: 13, color: "#475569" }}>
+              <div style={{ fontWeight: 700, color: "#0F172A" }}>{grupoDetalhe.clienteNome}</div>
+              <div>Telefone: {grupoDetalhe.clienteTelefone ?? "—"}</div>
+              <div>Total aberto: <strong>{brl(grupoDetalhe.totalGeral)}</strong> ({grupoDetalhe.titulos.length} títulos)</div>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[["Cliente", c.nome], ["Telefone", c.telefone ?? "—"], ["Nº NF", detailTitulo.numeroNF], ["Nº Título", detailTitulo.numeroTitulo ?? "—"], ["Valor Principal", brl(detailTitulo.valorPrincipal)], ["Juros", brl(detailTitulo.juros)], ["Total", brl(detailTitulo.total)], ["Dias em atraso", detailTitulo.diasAtraso > 0 ? `${detailTitulo.diasAtraso} dias` : "Em dia"], ["Chave Match", detailTitulo.chaveMatch]].map(([l, v]) => (
-                <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #F8FAFC" }}>
-                  <span style={{ color: "#64748B", fontSize: 13 }}>{l}</span>
-                  <span style={{ color: "#334155", fontWeight: 500, fontSize: 13, fontFamily: l === "Chave Match" ? "monospace" : undefined }}>{v}</span>
+              {grupoDetalhe.titulos.map(titulo => (
+                <div key={titulo.id} style={{ border: "1px solid #E2E8F0", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontWeight: 700, color: "#1D4ED8" }}>{titulo.numeroNF}</div>
+                    <StatusBadge status={titulo.status} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 6, fontSize: 13, color: "#475569" }}>
+                    <span>Vencimento: <strong>{fmtDate(titulo.vencimento)}</strong></span>
+                    <span>Valor: <strong>{brl(titulo.valorPrincipal)}</strong></span>
+                    <span>Juros: <strong>{brl(titulo.juros)}</strong></span>
+                    <span>Total: <strong>{brl(titulo.total)}</strong></span>
+                    <span>Atraso: <strong>{titulo.diasAtraso > 0 ? `${titulo.diasAtraso} dias` : "Em dia"}</strong></span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
+                    <button onClick={() => setBaixarTitulo(titulo)} style={{ background: "#F5F3FF", color: "#5B21B6", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Baixar</button>
+                  </div>
                 </div>
               ))}
-              <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}><StatusBadge status={detailTitulo.status} /></div>
             </div>
-          );
-        })()}
+          </div>
+        )}
       </Modal>
 
       {/* DISPARO MODAL */}
-      <Modal open={!!disparoTitulo} onClose={() => setDisparoTitulo(null)} title="Simular Disparo WhatsApp" width={460}>
-        {disparoTitulo && (() => {
-          const c = getCliente(disparoTitulo.clienteId);
+      <Modal open={!!disparoCliente} onClose={() => setDisparoCliente(null)} title={disparoCliente ? `Simular Disparo - ${disparoCliente.clienteNome}` : "Simular Disparo WhatsApp"} width={520}>
+        {disparoCliente && (() => {
+          const mensagemPreview = buildMensagemCobranca(
+            disparoCliente.titulos.map(t => ({
+              numeroNF: t.numeroNF,
+              numeroTitulo: t.numeroTitulo,
+              vencimento: t.vencimento,
+              valorPrincipal: t.valorPrincipal,
+              juros: t.juros,
+              total: t.total,
+              diasAtraso: t.diasAtraso,
+            })),
+            disparoCliente.clienteNome,
+            templatePadrao
+          );
+          const telefone = disparoCliente.clienteTelefone ?? "—";
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: 14, fontSize: 13, color: "#166534", lineHeight: 1.7 }}>
-                Olá, <strong>{c.nome}</strong>! 👋<br />
-                Identificamos o título <strong>{disparoTitulo.numeroNF}</strong> com vencimento em atraso de <strong>{disparoTitulo.diasAtraso} dias</strong>.<br />
-                Valor total: <strong>{brl(disparoTitulo.total)}</strong><br />
-                Entre em contato para regularizar. 🙏
+              <div
+                style={{
+                  background: "#F0FDF4",
+                  border: "1px solid #BBF7D0",
+                  borderRadius: 10,
+                  padding: 14,
+                  fontSize: 13,
+                  color: "#166534",
+                }}
+              >
+                <pre style={{ margin: 0, fontFamily: "inherit", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{mensagemPreview}</pre>
               </div>
-              <div style={{ fontSize: 12, color: "#64748B" }}>Será enviado para: <strong>{c.telefone}</strong></div>
-              <button onClick={() => { addToast("Disparo simulado com sucesso!"); setDisparoTitulo(null); }} style={{ background: "#16A34A", color: "#fff", border: "none", borderRadius: 8, padding: "10px 0", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-                Enviar via Z-API (Simulado)
+              <div style={{ fontSize: 12, color: "#64748B" }}>Será enviado para: <strong>{telefone}</strong></div>
+              <div style={{ fontSize: 12, color: "#64748B" }}>Títulos incluídos: {disparoCliente.titulos.length}</div>
+              <button 
+                onClick={dispararIndividual} 
+                disabled={enviandoIndividual}
+                style={{ 
+                  background: enviandoIndividual ? "#10b981" : "#16A34A", 
+                  color: "#fff", 
+                  border: "none", 
+                  borderRadius: 8, 
+                  padding: "10px 0", 
+                  fontWeight: 700, 
+                  fontSize: 14, 
+                  cursor: enviandoIndividual ? "not-allowed" : "pointer" 
+                }}>
+                {enviandoIndividual ? "Enviando..." : "Enviar via Z-API"}
               </button>
             </div>
           );

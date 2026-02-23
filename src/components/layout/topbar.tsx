@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useState } from "react";
 
-export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+interface TopbarProps {
+  onToggleSidebar: () => void;
+  onNovoTitulo?: () => void;
+}
+
+export default function Topbar({ onToggleSidebar, onNovoTitulo }: TopbarProps) {
   const [search, setSearch] = useState("");
 
   return (
@@ -19,10 +24,21 @@ export default function Topbar({ onToggleSidebar }: { onToggleSidebar: () => voi
 
       <div style={{ flex: 1 }} />
 
-      <Link href="/titulos" style={{ display: "flex", alignItems: "center", gap: 6, background: "#1E40AF", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
-        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 4v16m8-8H4"/></svg>
-        Novo Título
-      </Link>
+      {onNovoTitulo ? (
+        <button
+          type="button"
+          onClick={onNovoTitulo}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "#1E40AF", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+        >
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 4v16m8-8H4"/></svg>
+          Novo Título
+        </button>
+      ) : (
+        <Link href="/titulos" style={{ display: "flex", alignItems: "center", gap: 6, background: "#1E40AF", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path d="M12 4v16m8-8H4"/></svg>
+          Novo Título
+        </Link>
+      )}
 
       <Link href="/importacoes" style={{ display: "flex", alignItems: "center", gap: 6, background: "#F1F5F9", color: "#334155", border: "1px solid #E2E8F0", borderRadius: 8, padding: "7px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>
         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>

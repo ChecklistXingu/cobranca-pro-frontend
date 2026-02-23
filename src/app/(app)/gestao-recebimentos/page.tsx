@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { brl, simpleId } from "@/lib/utils";
 import type { Titulo } from "@/types";
@@ -90,35 +90,107 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: {
 }
 
 export default function GestaoRecebimentosPage() {
-  const { titulos, setTitulos, getCliente, recebimentos, setRecebimentos, addToast } = useStore();
+  const { getCliente, recebimentos, setRecebimentos, addToast } = useStore();
   const [tab, setTab] = useState<"PENDENTES" | "RECEBIDOS">("PENDENTES");
   const [baixarTitulo, setBaixarTitulo] = useState<Titulo | null>(null);
+  const [titulosAtlas, setTitulosAtlas] = useState<Titulo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const now = new Date();
+  const [dataFiltro, setDataFiltro] = useState(() => now.toISOString().split("T")[0]);
 
-  const pendentes = titulos.filter(t => t.status !== "RECEBIDO" && t.status !== "CANCELADO");
-  const recebidosList = titulos.filter(t => t.status === "RECEBIDO");
+  useEffect(() => {
+    buscarTitulosAtlas();
+  }, [dataFiltro]);
+
+  const buscarTitulosAtlas = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/titulos?dataDisparo=${dataFiltro}`);
+      if (!res.ok) throw new Error("Erro ao buscar títulos");
+      const data: Titulo[] = await res.json();
+      // Filtrar apenas títulos que tiveram disparo Z-API
+      const comDisparo = data.filter(t => t.ultimoDisparo);
+      setTitulosAtlas(comDisparo);
+    } catch (error) {
+      console.error("Erro ao buscar títulos:", error);
+      addToast("Erro ao carregar títulos do banco de dados", "error");
+      setTitulosAtlas([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pendentes = titulosAtlas.filter(t => t.status !== "RECEBIDO" && t.status !== "CANCELADO");
+  const recebidosList = titulosAtlas.filter(t => t.status === "RECEBIDO");
   const showing = tab === "PENDENTES" ? pendentes : recebidosList;
 
-  const handleBaixar = (data: { valorRecebido: string; data: string; forma: string; observacao: string; parcial: boolean }) => {
+  const handleBaixar = async (data: { valorRecebido: string; data: string; forma: string; observacao: string; parcial: boolean }) => {
     if (!baixarTitulo) return;
     const novoStatus = (!data.parcial && parseFloat(data.valorRecebido) >= baixarTitulo.total) ? "RECEBIDO" as const : baixarTitulo.status;
-    setTitulos(prev => prev.map(t => t.id === baixarTitulo.id ? { ...t, status: novoStatus } : t));
-    setRecebimentos(prev => [...prev, {
-      id: simpleId("r"),
-      tituloId: baixarTitulo.id,
-      data: data.data,
-      valorRecebido: parseFloat(data.valorRecebido),
-      forma: data.forma as "PIX",
-      observacao: data.observacao,
-    }]);
-    addToast(novoStatus === "RECEBIDO" ? "Título baixado como RECEBIDO! ✅" : "Recebimento parcial lançado.");
-    setBaixarTitulo(null);
+    
+    try {
+      // Atualizar no MongoDB via API
+      const res = await fetch(`/api/titulos`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: baixarTitulo.id, status: novoStatus }),
+      });
+      
+      if (!res.ok) throw new Error("Erro ao atualizar título");
+      
+      // Atualizar localmente
+      setTitulosAtlas(prev => prev.map(t => t.id === baixarTitulo.id ? { ...t, status: novoStatus } : t));
+      setRecebimentos(prev => [...prev, {
+        id: simpleId("r"),
+        tituloId: baixarTitulo.id,
+        data: data.data,
+        valorRecebido: parseFloat(data.valorRecebido),
+        forma: data.forma as "PIX",
+        observacao: data.observacao,
+      }]);
+      addToast(novoStatus === "RECEBIDO" ? "Título baixado como RECEBIDO! ✅" : "Recebimento parcial lançado.");
+      setBaixarTitulo(null);
+    } catch (error) {
+      console.error("Erro ao baixar título:", error);
+      addToast("Erro ao processar recebimento", "error");
+    }
   };
 
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Gestão de Recebimentos</h1>
-        <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Baixe títulos manualmente ou acompanhe o histórico.</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Gestão de Recebimentos</h1>
+            <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Títulos com disparo Z-API do MongoDB Atlas</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>
+              Data do Disparo:
+              <input 
+                type="date" 
+                value={dataFiltro} 
+                onChange={e => setDataFiltro(e.target.value)} 
+                style={{ marginLeft: 8, border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13 }} 
+              />
+            </label>
+            <button 
+              onClick={buscarTitulosAtlas} 
+              disabled={loading}
+              style={{ 
+                background: loading ? "#94A3B8" : "#3B82F6", 
+                color: "#fff", 
+                border: "none", 
+                borderRadius: 8, 
+                padding: "8px 16px", 
+                fontSize: 13, 
+                fontWeight: 600, 
+                cursor: loading ? "not-allowed" : "pointer" 
+              }}>
+              {loading ? "Carregando..." : "🔄 Atualizar"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* SUMMARY */}

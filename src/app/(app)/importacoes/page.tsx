@@ -12,6 +12,8 @@ export default function ImportacoesPage() {
   const [filename, setFilename] = useState<string | null>(null);
   const [carteira, setCarteira] = useState<Carteira | null>(null);
   const [rawCount, setRawCount] = useState(0);
+  const [importando, setImportando] = useState(false);
+  const [limpando, setLimpando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = async (file: File | null) => {
@@ -30,16 +32,72 @@ export default function ImportacoesPage() {
     processFile(e.dataTransfer.files[0] ?? null);
   };
 
-  const confirmar = () => {
-    if (!carteira) return;
-    const existingIds = new Set(clientes.map(c => c.id));
-    const novos = carteira.clientes.filter(c => !existingIds.has(c.id));
-    setClientes(p => [...p, ...novos]);
-    setTitulos(p => [...p, ...carteira.titulos]);
-    addToast(`Importados: ${carteira.clientes.length} clientes, ${carteira.titulos.length} títulos ✅`);
-    setCarteira(null);
-    setFilename(null);
-    setRawCount(0);
+  const confirmar = async () => {
+    if (!carteira || importando) return;
+    setImportando(true);
+    
+    try {
+      // Enviar para MongoDB Atlas via API
+      const res = await fetch("/api/titulos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientes: carteira.clientes,
+          titulos: carteira.titulos,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Erro ao salvar no banco de dados");
+      }
+
+      // Atualizar localStorage também
+      const existingIds = new Set(clientes.map(c => c.id));
+      const novos = carteira.clientes.filter(c => !existingIds.has(c.id));
+      setClientes(p => [...p, ...novos]);
+      setTitulos(p => [...p, ...carteira.titulos]);
+      
+      addToast(`✅ Importados para o Atlas: ${carteira.clientes.length} clientes, ${carteira.titulos.length} títulos`);
+      setCarteira(null);
+      setFilename(null);
+      setRawCount(0);
+    } catch (error) {
+      console.error("Erro ao importar:", error);
+      addToast(error instanceof Error ? error.message : "Erro ao importar para o banco", "error");
+    } finally {
+      setImportando(false);
+    }
+  };
+
+  const limparDia = async () => {
+    const hoje = new Date().toISOString().split("T")[0];
+    const confirma = confirm(`Tem certeza que deseja EXCLUIR todos os títulos importados hoje (${hoje}) do MongoDB Atlas?\n\nEsta ação não pode ser desfeita!`);
+    if (!confirma) return;
+
+    setLimpando(true);
+    try {
+      const res = await fetch(`/api/titulos?data=${hoje}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Erro ao limpar títulos");
+      }
+
+      const result = await res.json();
+      addToast(`🗑️ ${result.deletedCount} títulos excluídos do Atlas`);
+      
+      // Limpar também do localStorage
+      setTitulos(() => []);
+      setClientes(() => []);
+    } catch (error) {
+      console.error("Erro ao limpar:", error);
+      addToast(error instanceof Error ? error.message : "Erro ao limpar títulos", "error");
+    } finally {
+      setLimpando(false);
+    }
   };
 
   const resumo = useMemo(() => {
@@ -54,9 +112,27 @@ export default function ImportacoesPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Importações</h1>
-        <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Importe CSV com clientes e títulos em lote.</p>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Importações</h1>
+          <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Importe CSV com clientes e títulos em lote.</p>
+        </div>
+        <button 
+          onClick={limparDia}
+          disabled={limpando}
+          style={{ 
+            background: limpando ? "#FCA5A5" : "#EF4444", 
+            color: "#fff", 
+            border: "none", 
+            borderRadius: 10, 
+            padding: "10px 20px", 
+            fontWeight: 700, 
+            fontSize: 13, 
+            cursor: limpando ? "not-allowed" : "pointer",
+            whiteSpace: "nowrap"
+          }}>
+          {limpando ? "Limpando..." : "🗑️ Limpar Dia (Atlas)"}
+        </button>
       </div>
 
       {/* DROPZONE */}
@@ -138,10 +214,34 @@ Agro Horizonte;+5565988880002;NF-12403;DUP-003;22000;1100;23100;30`}</pre>
           </div>
 
           <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={confirmar} style={{ background: "#1E40AF", color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-              ✅ Confirmar Importação
+            <button 
+              onClick={confirmar} 
+              disabled={importando}
+              style={{ 
+                background: importando ? "#93C5FD" : "#1E40AF", 
+                color: "#fff", 
+                border: "none", 
+                borderRadius: 10, 
+                padding: "12px 28px", 
+                fontWeight: 700, 
+                fontSize: 14, 
+                cursor: importando ? "not-allowed" : "pointer" 
+              }}>
+              {importando ? "Importando..." : "✅ Confirmar Importação (Atlas)"}
             </button>
-            <button onClick={() => { setCarteira(null); setFilename(null); setRawCount(0); }} style={{ background: "#F1F5F9", color: "#334155", border: "1px solid #E2E8F0", borderRadius: 10, padding: "12px 20px", fontWeight: 600, fontSize: 14, cursor: "pointer" }}>
+            <button 
+              onClick={() => { setCarteira(null); setFilename(null); setRawCount(0); }} 
+              disabled={importando}
+              style={{ 
+                background: "#F1F5F9", 
+                color: "#334155", 
+                border: "1px solid #E2E8F0", 
+                borderRadius: 10, 
+                padding: "12px 20px", 
+                fontWeight: 600, 
+                fontSize: 14, 
+                cursor: importando ? "not-allowed" : "pointer" 
+              }}>
               Cancelar
             </button>
           </div>

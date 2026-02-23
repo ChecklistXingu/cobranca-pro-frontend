@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Cliente, Titulo, Recebimento, Disparo, Template } from "@/types";
 import { mockClientes, mockTitulos, mockRecebimentos, mockDisparos, mockTemplates } from "@/lib/mock/data";
 import { simpleId } from "@/lib/utils";
@@ -24,30 +24,68 @@ interface Store {
 }
 
 const StoreCtx = createContext<Store | null>(null);
+const STORAGE_CLIENTES = "cobranca-pro:clientes";
+const STORAGE_TITULOS = "cobranca-pro:titulos";
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [clientes, setClientesState] = useState<Cliente[]>(mockClientes);
-  const [titulos, setTitulosState] = useState<Titulo[]>(mockTitulos);
-  const [recebimentos, setRecebimentosState] = useState<Recebimento[]>(mockRecebimentos);
-  const [disparos, setDisparosState] = useState<Disparo[]>(mockDisparos);
+  const [clientes, setClientesState] = useState<Cliente[]>([]);
+  const [titulos, setTitulosState] = useState<Titulo[]>([]);
+  const [recebimentos, setRecebimentosState] = useState<Recebimento[]>([]);
+  const [disparos, setDisparosState] = useState<Disparo[]>([]);
   const [templates, setTemplatesState] = useState<Template[]>(mockTemplates);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = (message: string, type: Toast["type"] = "success") => {
+  const setClientes = useCallback((fn: (prev: Cliente[]) => Cliente[]) => setClientesState(fn), []);
+  const setTitulos = useCallback((fn: (prev: Titulo[]) => Titulo[]) => setTitulosState(fn), []);
+  const setRecebimentos = useCallback((fn: (prev: Recebimento[]) => Recebimento[]) => setRecebimentosState(fn), []);
+  const setDisparos = useCallback((fn: (prev: Disparo[]) => Disparo[]) => setDisparosState(fn), []);
+  const setTemplates = useCallback((fn: (prev: Template[]) => Template[]) => setTemplatesState(fn), []);
+
+  const addToast = useCallback((message: string, type: Toast["type"] = "success") => {
     const id = Date.now();
     setToasts(p => [...p, { id, message, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
-  };
+  }, []);
 
-  const getCliente = (id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" };
+  const getCliente = useCallback((id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" }, [clientes]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const savedClientes = window.localStorage.getItem(STORAGE_CLIENTES);
+      const savedTitulos = window.localStorage.getItem(STORAGE_TITULOS);
+      if (savedClientes) setClientesState(JSON.parse(savedClientes));
+      if (savedTitulos) setTitulosState(JSON.parse(savedTitulos));
+    } catch (error) {
+      console.warn("Falha ao carregar dados locais", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!clientes.length) {
+      window.localStorage.removeItem(STORAGE_CLIENTES);
+      return;
+    }
+    window.localStorage.setItem(STORAGE_CLIENTES, JSON.stringify(clientes));
+  }, [clientes]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!titulos.length) {
+      window.localStorage.removeItem(STORAGE_TITULOS);
+      return;
+    }
+    window.localStorage.setItem(STORAGE_TITULOS, JSON.stringify(titulos));
+  }, [titulos]);
 
   return (
     <StoreCtx.Provider value={{
-      clientes, setClientes: (fn) => setClientesState(fn),
-      titulos, setTitulos: (fn) => setTitulosState(fn),
-      recebimentos, setRecebimentos: (fn) => setRecebimentosState(fn),
-      disparos, setDisparos: (fn) => setDisparosState(fn),
-      templates, setTemplates: (fn) => setTemplatesState(fn),
+      clientes, setClientes,
+      titulos, setTitulos,
+      recebimentos, setRecebimentos,
+      disparos, setDisparos,
+      templates, setTemplates,
       toasts, addToast, getCliente,
     }}>
       {children}
