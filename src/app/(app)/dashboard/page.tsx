@@ -25,6 +25,7 @@ export default function DashboardPage() {
         const resTitulos = await apiFetch("/api/titulos");
         if (resTitulos.ok) {
           const titulosData = await resTitulos.json();
+          console.log("Títulos recebidos:", titulosData); // DEBUG
           setTitulos(titulosData);
         }
 
@@ -46,7 +47,7 @@ export default function DashboardPage() {
 
   const titulosFiltrados = useMemo(() => {
     if (!dataInicio && !dataFim) return titulos;
-    return titulos.filter(t => {
+    const filtrados = titulos.filter(t => {
       if (!t.createdAt) return true;
       const tituloDate = new Date(t.createdAt);
       tituloDate.setHours(0, 0, 0, 0); // Normalizar para início do dia
@@ -61,6 +62,8 @@ export default function DashboardPage() {
       if (fim && tituloDate > fim) return false;
       return true;
     });
+    console.log("Títulos filtrados:", filtrados); // DEBUG
+    return filtrados;
   }, [titulos, dataInicio, dataFim]);
 
   const stats = useMemo(() => {
@@ -70,6 +73,8 @@ export default function DashboardPage() {
     const total = titulosFiltrados.reduce((a, t) => a + Number(t.total || 0), 0);
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
     const disparosEnviados = disparos.filter(d => d.status === "ENVIADO").length;
+
+    console.log("Stats calculados:", { emAberto, vencidos, recebido, total, taxa, disparosEnviados }); // DEBUG
 
     const donutData = [
       { name: "Aberto", value: emAberto, color: "#3B82F6" },
