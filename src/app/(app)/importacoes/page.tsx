@@ -75,19 +75,19 @@ export default function ImportacoesPage() {
 
     setLimpando(true);
     try {
-      const res = await apiFetch(`/api/titulos?data=${hoje}`, {
+      const res = await apiFetch(`/api/importar?data=${hoje}`, {
         method: "DELETE",
       });
 
       const result = await res.json();
-      addToast(`🗑️ ${result.deletedCount} títulos excluídos do Atlas`);
+      addToast(`🗑️ ${result.deletedTitulos} títulos e ${result.deletedClientes} clientes excluídos do Atlas`);
       
       // Limpar também do localStorage
       setTitulos(() => []);
       setClientes(() => []);
     } catch (error) {
       console.error("Erro ao limpar:", error);
-      const msg = error instanceof Error ? error.message : "Erro ao limpar títulos";
+      const msg = error instanceof Error ? error.message : "Erro ao limpar dados";
       addToast(msg, "error");
       console.error("Detalhes do erro:", error);
     } finally {
