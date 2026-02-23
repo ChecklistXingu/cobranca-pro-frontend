@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -119,7 +119,38 @@ export default function TitulosPage() {
   const [baixarTitulo, setBaixarTitulo] = useState<Titulo | null>(null);
   const [disparandoLote, setDisparandoLote] = useState(false);
   const [enviandoIndividual, setEnviandoIndividual] = useState(false);
+  const [carregando, setCarregando] = useState(true);
   const templatePadrao = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
+
+  // Carregar dados do Atlas ao montar o componente
+  useEffect(() => {
+    const carregarDados = async () => {
+      try {
+        setCarregando(true);
+        
+        // Buscar títulos
+        const resTitulos = await apiFetch("/api/titulos");
+        if (resTitulos.ok) {
+          const titulosData = await resTitulos.json();
+          setTitulos(titulosData);
+        }
+
+        // Buscar clientes
+        const resClientes = await apiFetch("/api/clientes");
+        if (resClientes.ok) {
+          const clientesData = await resClientes.json();
+          setClientes(clientesData);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar dados:", error);
+        addToast("Erro ao carregar dados do servidor", "error");
+      } finally {
+        setCarregando(false);
+      }
+    };
+
+    carregarDados();
+  }, [setTitulos, setClientes, addToast]);
 
   const filteredTitulos = useMemo(() => titulos.filter(t => {
     const c = getCliente(t.clienteId);
