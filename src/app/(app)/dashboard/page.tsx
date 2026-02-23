@@ -49,8 +49,14 @@ export default function DashboardPage() {
     return titulos.filter(t => {
       if (!t.createdAt) return true;
       const tituloDate = new Date(t.createdAt);
+      tituloDate.setHours(0, 0, 0, 0); // Normalizar para início do dia
+      
       const inicio = dataInicio ? new Date(dataInicio) : null;
+      if (inicio) inicio.setHours(0, 0, 0, 0);
+      
       const fim = dataFim ? new Date(dataFim) : null;
+      if (fim) fim.setHours(23, 59, 59, 999); // Fim do dia
+      
       if (inicio && tituloDate < inicio) return false;
       if (fim && tituloDate > fim) return false;
       return true;
