@@ -60,24 +60,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const getCliente = useCallback((id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" }, [clientes]);
 
   useEffect(() => {
+    let active = true;
+
     (async () => {
       try {
-        const [tits, clis, recs, disps] = await Promise.all([
-          apiFetch("/api/titulos"),
-          apiFetch("/api/clientes"),
-          apiFetch("/api/recebimentos"),
-          apiFetch("/api/disparos"),
-        ]);
-        setTitulosState(await tits.json());
-        setClientesState(await clis.json());
-        setRecebimentosState(await recs.json());
-        setDisparosState(await disps.json());
-      } catch {
+        const endpoints = [
+          { name: "títulos", setter: setTitulosState, request: apiFetch("/api/titulos") },
+          { name: "clientes", setter: setClientesState, request: apiFetch("/api/clientes") },
+          { name: "recebimentos", setter: setRecebimentosState, request: apiFetch("/api/recebimentos") },
+          { name: "disparos", setter: setDisparosState, request: apiFetch("/api/disparos") },
+        ];
+
+        const responses = await Promise.allSettled(endpoints.map(e => e.request));
+        const failures: string[] = [];
+
+        for (let i = 0; i < responses.length; i++) {
+          const result = responses[i];
+          const { name, setter } = endpoints[i];
+          if (result.status === "fulfilled") {
+            try {
+              const data = await result.value.json();
+              if (active) setter(data);
+            } catch (error) {
+              console.error(`[Store] Falha ao processar ${name}:`, error);
+              failures.push(name);
+            }
+          } else {
+            console.error(`[Store] Falha ao buscar ${name}:`, result.reason);
+            failures.push(name);
+          }
+        }
+
+        if (failures.length) {
+          addToast(`Erro ao carregar ${failures.join(", ")}. Verifique o backend.`, "error");
+        }
+      } catch (error) {
+        console.error("[Store] Erro inesperado ao carregar dados", error);
         addToast("Erro ao conectar com o servidor. Usando dados locais.", "error");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
+
+    return () => { active = false; };
   }, []);
 
   const refetchTitulos = async () => {
