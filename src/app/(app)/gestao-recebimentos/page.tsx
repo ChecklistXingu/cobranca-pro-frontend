@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { brl, simpleId } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import type { Titulo } from "@/types";
 
 function StatusBadge({ status }: { status: string }) {
@@ -105,7 +106,7 @@ export default function GestaoRecebimentosPage() {
   const buscarTitulosAtlas = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/titulos?dataDisparo=${dataFiltro}`);
+      const res = await apiFetch(`/api/titulos`);
       if (!res.ok) throw new Error("Erro ao buscar títulos");
       const data: Titulo[] = await res.json();
       // Filtrar apenas títulos que tiveram disparo Z-API
@@ -130,10 +131,10 @@ export default function GestaoRecebimentosPage() {
     
     try {
       // Atualizar no MongoDB via API
-      const res = await fetch(`/api/titulos`, {
+      const res = await apiFetch(`/api/titulos/${baixarTitulo.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: baixarTitulo.id, status: novoStatus }),
+        body: JSON.stringify({ status: novoStatus }),
       });
       
       if (!res.ok) throw new Error("Erro ao atualizar título");
