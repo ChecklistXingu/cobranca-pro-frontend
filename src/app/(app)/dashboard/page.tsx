@@ -9,13 +9,13 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 const formatInputDate = (date: Date) => date.toISOString().split("T")[0];
 
 export default function DashboardPage() {
-  const { titulos, setTitulos, getCliente, disparos, setDisparos } = useStore();
+  const { titulos, setTitulos, setClientes, getCliente, disparos, setDisparos, addToast } = useStore();
   const now = new Date();
   const [dataInicio, setDataInicio] = useState(() => formatInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [dataFim, setDataFim] = useState(() => formatInputDate(now));
   const [carregando, setCarregando] = useState(true);
 
-  // Carregar dados do Atlas ao montar o componente
+  // Carregar dados do Atlas ao montar o componente (mesma lógica da página Títulos)
   useEffect(() => {
     const carregarDados = async () => {
       try {
@@ -26,8 +26,13 @@ export default function DashboardPage() {
         if (resTitulos.ok) {
           const titulosData = await resTitulos.json();
           setTitulos(titulosData);
-        } else {
-          console.error("Erro ao buscar títulos:", resTitulos.status);
+        }
+
+        // Buscar clientes
+        const resClientes = await apiFetch("/api/clientes");
+        if (resClientes.ok) {
+          const clientesData = await resClientes.json();
+          setClientes(clientesData);
         }
 
         // Buscar disparos
@@ -35,18 +40,17 @@ export default function DashboardPage() {
         if (resDisparos.ok) {
           const disparosData = await resDisparos.json();
           setDisparos(disparosData);
-        } else {
-          console.error("Erro ao buscar disparos:", resDisparos.status);
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
+        addToast("Erro ao carregar dados do servidor", "error");
       } finally {
         setCarregando(false);
       }
     };
 
     carregarDados();
-  }, [setTitulos, setDisparos]);
+  }, [setTitulos, setClientes, setDisparos, addToast]);
 
   const titulosFiltrados = useMemo(() => {
     if (!dataInicio && !dataFim) return titulos;
