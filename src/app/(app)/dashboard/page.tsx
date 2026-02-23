@@ -25,8 +25,9 @@ export default function DashboardPage() {
         const resTitulos = await apiFetch("/api/titulos");
         if (resTitulos.ok) {
           const titulosData = await resTitulos.json();
-          console.log("Títulos recebidos:", titulosData); // DEBUG
           setTitulos(titulosData);
+        } else {
+          console.error("Erro ao buscar títulos:", resTitulos.status);
         }
 
         // Buscar disparos
@@ -34,6 +35,8 @@ export default function DashboardPage() {
         if (resDisparos.ok) {
           const disparosData = await resDisparos.json();
           setDisparos(disparosData);
+        } else {
+          console.error("Erro ao buscar disparos:", resDisparos.status);
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
@@ -61,7 +64,6 @@ export default function DashboardPage() {
       if (fim && tituloDate > fim) return false;
       return true;
     });
-    console.log("Títulos filtrados:", filtrados); // DEBUG
     return filtrados;
   }, [titulos, dataInicio, dataFim]);
 
@@ -72,8 +74,6 @@ export default function DashboardPage() {
     const total = titulosFiltrados.reduce((a, t) => a + Number(t.total || 0), 0);
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
     const disparosEnviados = disparos.filter(d => d.status === "ENVIADO").length;
-
-    console.log("Stats calculados:", { emAberto, vencidos, recebido, total, taxa, disparosEnviados }); // DEBUG
 
     const donutData = [
       { name: "Aberto", value: emAberto, color: "#3B82F6" },
