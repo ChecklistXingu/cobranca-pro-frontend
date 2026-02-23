@@ -25,21 +25,21 @@ export default function DashboardPage() {
         const resTitulos = await apiFetch("/api/titulos");
         if (resTitulos.ok) {
           const titulosData = await resTitulos.json();
-          setTitulos(titulosData);
+          setTitulos(() => titulosData);
         }
 
         // Buscar clientes
         const resClientes = await apiFetch("/api/clientes");
         if (resClientes.ok) {
           const clientesData = await resClientes.json();
-          setClientes(clientesData);
+          setClientes(() => clientesData);
         }
 
         // Buscar disparos
         const resDisparos = await apiFetch("/api/disparos");
         if (resDisparos.ok) {
           const disparosData = await resDisparos.json();
-          setDisparos(disparosData);
+          setDisparos(() => disparosData);
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
