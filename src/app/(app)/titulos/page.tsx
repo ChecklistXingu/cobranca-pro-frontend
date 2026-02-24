@@ -135,6 +135,7 @@ export default function TitulosPage() {
     nome: "",
     telefone: "",
   });
+  const [anexos, setAnexos] = useState<File[]>([]);
   const templatePadrao = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
 
   // Carregar dados do Atlas ao montar o componente
@@ -387,10 +388,29 @@ export default function TitulosPage() {
 
     setEnviandoIndividual(true);
     try {
+      const anexosPayload =
+        anexos.length > 0
+          ? await Promise.all(
+              anexos.slice(0, 5).map(async (file) => {
+                const base64 = await fileToBase64(file);
+                const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
+                return {
+                  document: base64,
+                  fileName: file.name,
+                  extension: ext,
+                };
+              })
+            )
+          : [];
+
       const res = await apiFetch("/api/disparos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tituloId: tituloBase.id, template: templatePadrao }),
+        body: JSON.stringify({
+          tituloId: tituloBase.id,
+          template: templatePadrao,
+          anexos: anexosPayload,
+        }),
       });
       const data = await res.json();
 
@@ -399,7 +419,7 @@ export default function TitulosPage() {
       } else {
         addToast("Mensagem enviada via Z-API! ✅");
         await sincronizarTitulos();
-        setDisparoCliente(null);
+        fecharDisparoModal();
       }
     } catch (error) {
       console.error("erro disparo individual", error);
@@ -456,6 +476,41 @@ export default function TitulosPage() {
     setTitulos(() => []);
     setClientes(() => []);
     addToast("Tela de cobrança limpa. Importe um novo arquivo para preencher novamente.");
+  };
+
+  const fecharDisparoModal = () => {
+    setDisparoCliente(null);
+    setAnexos([]);
+  };
+
+  const handleArquivosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter(f =>
+      f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+    );
+    if (!files.length) {
+      setAnexos([]);
+      return;
+    }
+    if (files.length > 5) {
+      addToast("Você pode anexar no máximo 5 PDFs.", "error");
+    }
+    setAnexos(files.slice(0, 5));
+  };
+
+  const fileToBase64 = (file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === "string") {
+          resolve(result);
+        } else {
+          reject(new Error("Erro ao ler arquivo"));
+        }
+      };
+      reader.onerror = () => reject(reader.error || new Error("Erro ao ler arquivo"));
+      reader.readAsDataURL(file);
+    });
   };
 
   return (
@@ -891,7 +946,7 @@ export default function TitulosPage() {
       </Modal>
 
       {/* DISPARO MODAL */}
-      <Modal open={!!disparoCliente} onClose={() => setDisparoCliente(null)} title={disparoCliente ? `Simular Disparo - ${disparoCliente.clienteNome}` : "Simular Disparo WhatsApp"} width={520}>
+      <Modal open={!!disparoCliente} onClose={fecharDisparoModal} title={disparoCliente ? `Simular Disparo - ${disparoCliente.clienteNome}` : "Simular Disparo WhatsApp"} width={520}>
         {disparoCliente && (() => {
           const mensagemPreview = buildMensagemCobranca(
             disparoCliente.titulos.map(t => ({
@@ -920,6 +975,37 @@ export default function TitulosPage() {
                 }}
               >
                 <pre style={{ margin: 0, fontFamily: "inherit", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{mensagemPreview}</pre>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    border: "1px dashed #93C5FD",
+                    background: "#EFF6FF",
+                    color: "#1D4ED8",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span>📎 Anexar PDFs (até 5)</span>
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    multiple
+                    onChange={handleArquivosChange}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                {anexos.length > 0 && (
+                  <div style={{ fontSize: 11, color: "#64748B", textAlign: "right" }}>
+                    {anexos.length} PDF(s) selecionado(s)
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: 12, color: "#64748B" }}>Será enviado para: <strong>{telefone}</strong></div>
               <div style={{ fontSize: 12, color: "#64748B" }}>Títulos incluídos: {disparoCliente.titulos.length}</div>
