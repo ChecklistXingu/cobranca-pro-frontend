@@ -22,6 +22,9 @@ interface Store {
   templates: Template[];
   setTemplates: (next: Template[] | ((prev: Template[]) => Template[])) => void;
   loading: boolean;
+  telaLimpaAtiva: boolean;
+  marcarTelaLimpa: () => void;
+  limparTelaLimpa: () => void;
   refetchTitulos: () => Promise<void>;
   refetchDisparos: () => Promise<void>;
   lancarRecebimento: (payload: {
@@ -37,6 +40,7 @@ interface Store {
 const StoreCtx = createContext<Store | null>(null);
 const STORAGE_CLIENTES = "cobranca-pro:clientes";
 const STORAGE_TITULOS = "cobranca-pro:titulos";
+const STORAGE_TELA_LIMPA = "cobranca-pro:tela-limpa";
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientesState] = useState<Cliente[]>([]);
@@ -46,6 +50,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplatesState] = useState<Template[]>(mockTemplates);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [telaLimpaAtiva, setTelaLimpaAtiva] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(STORAGE_TELA_LIMPA) === "true";
+  });
+  const [telaLimpaReady, setTelaLimpaReady] = useState<boolean>(() => typeof window === "undefined");
 
   const applySetter = useCallback(<T,>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -57,6 +66,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setRecebimentos = useCallback((next: Recebimento[] | ((prev: Recebimento[]) => Recebimento[])) => applySetter(setRecebimentosState, next), [applySetter]);
   const setDisparos = useCallback((next: Disparo[] | ((prev: Disparo[]) => Disparo[])) => applySetter(setDisparosState, next), [applySetter]);
   const setTemplates = useCallback((next: Template[] | ((prev: Template[]) => Template[])) => applySetter(setTemplatesState, next), [applySetter]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setTelaLimpaAtiva(window.localStorage.getItem(STORAGE_TELA_LIMPA) === "true");
+    setTelaLimpaReady(true);
+  }, []);
+
+  const marcarTelaLimpa = useCallback(() => {
+    setTelaLimpaAtiva(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_TELA_LIMPA, "true");
+    }
+  }, []);
+
+  const limparTelaLimpa = useCallback(() => {
+    setTelaLimpaAtiva(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(STORAGE_TELA_LIMPA);
+    }
+  }, []);
 
   const addToast = useCallback((message: string, type: Toast["type"] = "success") => {
     const id = Date.now();
@@ -77,15 +106,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const getCliente = useCallback((id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" }, [clientes]);
 
   useEffect(() => {
+    if (!telaLimpaReady) return;
     let active = true;
 
     (async () => {
       try {
         const endpoints = [
-          { name: "títulos", setter: setTitulosState, request: apiFetch("/api/titulos") },
-          { name: "clientes", setter: setClientesState, request: apiFetch("/api/clientes") },
-          { name: "recebimentos", setter: setRecebimentosState, request: apiFetch("/api/recebimentos") },
-          { name: "disparos", setter: setDisparosState, request: apiFetch("/api/disparos") },
+          {
+            name: "títulos",
+            apply: (data: Titulo[]) => {
+              if (!telaLimpaAtiva && active) setTitulosState(data);
+            },
+            request: apiFetch("/api/titulos"),
+          },
+          {
+            name: "clientes",
+            apply: (data: Cliente[]) => {
+              if (!telaLimpaAtiva && active) setClientesState(data);
+            },
+            request: apiFetch("/api/clientes"),
+          },
+          { name: "recebimentos", apply: (data: Recebimento[]) => active && setRecebimentosState(data), request: apiFetch("/api/recebimentos") },
+          { name: "disparos", apply: (data: Disparo[]) => active && setDisparosState(data), request: apiFetch("/api/disparos") },
         ];
 
         const responses = await Promise.allSettled(endpoints.map(e => e.request));
@@ -93,11 +135,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         for (let i = 0; i < responses.length; i++) {
           const result = responses[i];
-          const { name, setter } = endpoints[i];
+          const { name, apply } = endpoints[i];
           if (result.status === "fulfilled") {
             try {
               const data = await result.value.json();
-              if (active) setter(data);
+              apply(data);
             } catch (error) {
               console.error(`[Store] Falha ao processar ${name}:`, error);
               failures.push(name);
@@ -120,9 +162,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { active = false; };
-  }, []);
+  }, [telaLimpaAtiva, telaLimpaReady]);
 
   const refetchTitulos = async () => {
+    if (telaLimpaAtiva) return;
     const data = await apiFetch("/api/titulos");
     setTitulosState(await data.json());
   };
@@ -240,6 +283,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       disparos, setDisparos,
       templates, setTemplates,
       loading,
+      telaLimpaAtiva,
+      marcarTelaLimpa,
+      limparTelaLimpa,
       refetchTitulos,
       refetchDisparos,
       lancarRecebimento,

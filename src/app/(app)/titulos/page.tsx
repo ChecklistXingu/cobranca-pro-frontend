@@ -110,7 +110,19 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: { open: boolean; titu
 const STATUS_OPTIONS = ["ABERTO", "VENCIDO", "RECEBIDO", "NEGOCIADO", "CANCELADO"] as const;
 
 export default function TitulosPage() {
-  const { titulos, titulosLembretes, titulosCobranca, setTitulos, setClientes, getCliente, addToast, templates } = useStore();
+  const {
+    titulos,
+    titulosLembretes,
+    titulosCobranca,
+    setTitulos,
+    setClientes,
+    getCliente,
+    addToast,
+    templates,
+    marcarTelaLimpa,
+    limparTelaLimpa,
+    telaLimpaAtiva,
+  } = useStore();
   const [aba, setAba] = useState<"TITULOS" | "LEMBRETES" | "FATURADOS">("TITULOS");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("TODOS");
@@ -156,6 +168,11 @@ export default function TitulosPage() {
 
   // Carregar dados do Atlas ao montar o componente
   useEffect(() => {
+    if (telaLimpaAtiva) {
+      setCarregando(false);
+      return;
+    }
+
     const carregarDados = async () => {
       try {
         setCarregando(true);
@@ -182,7 +199,7 @@ export default function TitulosPage() {
     };
 
     carregarDados();
-  }, [setTitulos, setClientes, addToast]);
+  }, [setTitulos, setClientes, addToast, telaLimpaAtiva]);
 
   // Use the appropriate titles list based on the selected tab
   const currentTitulos = aba === "LEMBRETES" ? titulosLembretes : titulosCobranca;
@@ -257,6 +274,7 @@ export default function TitulosPage() {
 
   const sincronizarTitulos = async () => {
     try {
+      limparTelaLimpa();
       const res = await apiFetch("/api/titulos");
       if (!res.ok) throw new Error("Não foi possível atualizar os títulos");
       const titulosApi: Titulo[] = await res.json();
@@ -269,6 +287,7 @@ export default function TitulosPage() {
 
   const sincronizarClientes = async () => {
     try {
+      limparTelaLimpa();
       const res = await apiFetch("/api/clientes");
       if (!res.ok) throw new Error("Não foi possível atualizar os clientes");
       const clientesApi = await res.json();
@@ -493,47 +512,17 @@ export default function TitulosPage() {
       return;
     }
 
-    const datasImportacao = Array.from(new Set(
-      titulos
-        .map(t => (t.dataReferenciaImportacao ?? t.createdAt ?? "").split("T")[0])
-        .filter(Boolean)
-    ));
-
-    if (!datasImportacao.length) {
-      addToast("Não foi possível identificar a data de importação para limpeza.", "error");
-      return;
-    }
-
-    const mensagemDatas = datasImportacao
-      .map(data => fmtDate(data))
-      .join(" / ");
     const confirma = confirm(
-      `Tem certeza que deseja remover definitivamente os dados importados em ${mensagemDatas}?\n\nEssa ação excluirá os títulos e clientes correspondentes no Atlas e não poderá ser desfeita.`
+      "Limpar a tela irá ocultar os títulos atuais até a próxima importação. Deseja continuar?"
     );
     if (!confirma) return;
 
     setLimpandoTela(true);
-    try {
-      let totalTitulos = 0;
-      let totalClientes = 0;
-
-      for (const dataISO of datasImportacao) {
-        const res = await apiFetch(`/api/importar?data=${dataISO}`, { method: "DELETE" });
-        const resultado = await res.json();
-        totalTitulos += resultado.deletedTitulos ?? 0;
-        totalClientes += resultado.deletedClientes ?? 0;
-      }
-
-      setTitulos(() => []);
-      setClientes(() => []);
-      await Promise.all([sincronizarTitulos(), sincronizarClientes()]);
-      addToast(`🗑️ Removidos ${totalTitulos} títulos e ${totalClientes} cliente(s) do Atlas.`);
-    } catch (error) {
-      console.error("Erro ao limpar dados do Atlas:", error);
-      addToast("Erro ao limpar dados do servidor", "error");
-    } finally {
-      setLimpandoTela(false);
-    }
+    setTitulos(() => []);
+    setClientes(() => []);
+    marcarTelaLimpa();
+    addToast("Tela limpa. Importe um novo arquivo para preencher novamente.");
+    setLimpandoTela(false);
   };
 
   const fecharDisparoModal = () => {
