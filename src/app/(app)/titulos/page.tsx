@@ -120,6 +120,16 @@ export default function TitulosPage() {
   const [disparandoLote, setDisparandoLote] = useState(false);
   const [enviandoIndividual, setEnviandoIndividual] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [editingTitulo, setEditingTitulo] = useState<Titulo | null>(null);
+  const [editForm, setEditForm] = useState({
+    numeroNF: "",
+    numeroTitulo: "",
+    valorPrincipal: "",
+    juros: "",
+    vencimento: "",
+    status: "ABERTO",
+  });
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const templatePadrao = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
 
   // Carregar dados do Atlas ao montar o componente
@@ -229,6 +239,95 @@ export default function TitulosPage() {
     } catch (error) {
       console.error("sync titulos", error);
       addToast(error instanceof Error ? error.message : "Erro ao sincronizar títulos", "error");
+    }
+  };
+
+  const iniciarEdicao = (titulo: Titulo) => {
+    const vencimentoInput =
+      titulo.vencimento ? new Date(titulo.vencimento).toISOString().split("T")[0] : "";
+    setEditingTitulo(titulo);
+    setEditForm({
+      numeroNF: titulo.numeroNF,
+      numeroTitulo: titulo.numeroTitulo ?? "",
+      valorPrincipal: String(titulo.valorPrincipal ?? 0),
+      juros: String(titulo.juros ?? 0),
+      vencimento: vencimentoInput,
+      status: titulo.status,
+    });
+  };
+
+  const cancelarEdicao = () => {
+    setEditingTitulo(null);
+    setEditForm({
+      numeroNF: "",
+      numeroTitulo: "",
+      valorPrincipal: "",
+      juros: "",
+      vencimento: "",
+      status: "ABERTO",
+    });
+  };
+
+  const salvarEdicaoTitulo = async () => {
+    if (!editingTitulo) return;
+
+    try {
+      setSalvandoEdicao(true);
+
+      const valorPrincipal = Number(editForm.valorPrincipal) || 0;
+      const juros = Number(editForm.juros) || 0;
+      const total = valorPrincipal + juros;
+
+      if (!editForm.numeroNF.trim() || !valorPrincipal) {
+        addToast("Preencha NF e valor", "error");
+        setSalvandoEdicao(false);
+        return;
+      }
+
+      const diasAtraso = (() => {
+        if (!editForm.vencimento) return 0;
+        const hoje = new Date();
+        const venc = new Date(editForm.vencimento);
+        const diff = Math.floor(
+          (hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        return diff > 0 ? diff : 0;
+      })();
+
+      const payload = {
+        numeroNF: editForm.numeroNF.trim(),
+        numeroTitulo: editForm.numeroTitulo.trim() || undefined,
+        valorPrincipal,
+        juros,
+        total,
+        diasAtraso,
+        vencimento: editForm.vencimento
+          ? new Date(editForm.vencimento).toISOString()
+          : undefined,
+        status: editForm.status,
+      };
+
+      const res = await apiFetch(`/api/titulos/${editingTitulo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as any)?.error ?? "Erro ao atualizar título");
+      }
+
+      await sincronizarTitulos();
+      addToast("Título atualizado com sucesso!");
+      cancelarEdicao();
+      setGrupoDetalhe(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro ao salvar alterações";
+      addToast(message, "error");
+    } finally {
+      setSalvandoEdicao(false);
     }
   };
 
@@ -467,24 +566,253 @@ export default function TitulosPage() {
               <div>Total aberto: <strong>{brl(grupoDetalhe.totalGeral)}</strong> ({grupoDetalhe.titulos.length} títulos)</div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {grupoDetalhe.titulos.map(titulo => (
-                <div key={titulo.id} style={{ border: "1px solid #E2E8F0", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ fontWeight: 700, color: "#1D4ED8" }}>{titulo.numeroNF}</div>
-                    <StatusBadge status={titulo.status} />
+              {grupoDetalhe.titulos.map(titulo => {
+                const isEditing = editingTitulo?.id === titulo.id;
+                const valorEdit = Number(editForm.valorPrincipal || 0);
+                const jurosEdit = Number(editForm.juros || 0);
+                const totalEdit = valorEdit + jurosEdit;
+                const diasAtrasoEdit = (() => {
+                  if (!isEditing || !editForm.vencimento) return titulo.diasAtraso;
+                  const hoje = new Date();
+                  const venc = new Date(editForm.vencimento);
+                  const diff = Math.floor(
+                    (hoje.getTime() - venc.getTime()) / (1000 * 60 * 60 * 24)
+                  );
+                  return diff > 0 ? diff : 0;
+                })();
+
+                return (
+                  <div
+                    key={titulo.id}
+                    style={{
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 12,
+                      padding: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      {isEditing ? (
+                        <input
+                          value={editForm.numeroNF}
+                          onChange={e =>
+                            setEditForm(p => ({ ...p, numeroNF: e.target.value }))
+                          }
+                          style={{
+                            ...inputStyle,
+                            maxWidth: 220,
+                            fontWeight: 600,
+                            color: "#1D4ED8",
+                          }}
+                        />
+                      ) : (
+                        <div style={{ fontWeight: 700, color: "#1D4ED8" }}>
+                          {titulo.numeroNF}
+                        </div>
+                      )}
+                      {isEditing ? (
+                        <select
+                          value={editForm.status}
+                          onChange={e =>
+                            setEditForm(p => ({ ...p, status: e.target.value }))
+                          }
+                          style={{
+                            ...inputStyle,
+                            maxWidth: 160,
+                            fontSize: 12,
+                            padding: "6px 10px",
+                          }}
+                        >
+                          {STATUS_OPTIONS.map(s => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <StatusBadge status={titulo.status} />
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+                        gap: 6,
+                        fontSize: 13,
+                        color: "#475569",
+                      }}
+                    >
+                      {isEditing ? (
+                        <>
+                          <span>
+                            Vencimento:{" "}
+                            <input
+                              type="date"
+                              value={editForm.vencimento}
+                              onChange={e =>
+                                setEditForm(p => ({
+                                  ...p,
+                                  vencimento: e.target.value,
+                                }))
+                              }
+                              style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }}
+                            />
+                          </span>
+                          <span>
+                            Valor:{" "}
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm.valorPrincipal}
+                              onChange={e =>
+                                setEditForm(p => ({
+                                  ...p,
+                                  valorPrincipal: e.target.value,
+                                }))
+                              }
+                              style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }}
+                            />
+                          </span>
+                          <span>
+                            Juros:{" "}
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editForm.juros}
+                              onChange={e =>
+                                setEditForm(p => ({ ...p, juros: e.target.value }))
+                              }
+                              style={{ ...inputStyle, padding: "4px 8px", fontSize: 12 }}
+                            />
+                          </span>
+                          <span>
+                            Total:{" "}
+                            <strong>{brl(totalEdit || titulo.total)}</strong>
+                          </span>
+                          <span>
+                            Atraso:{" "}
+                            <strong>
+                              {diasAtrasoEdit && diasAtrasoEdit > 0
+                                ? `${diasAtrasoEdit} dias`
+                                : "Em dia"}
+                            </strong>
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span>
+                            Vencimento: <strong>{fmtDate(titulo.vencimento)}</strong>
+                          </span>
+                          <span>
+                            Valor: <strong>{brl(titulo.valorPrincipal)}</strong>
+                          </span>
+                          <span>
+                            Juros: <strong>{brl(titulo.juros)}</strong>
+                          </span>
+                          <span>
+                            Total: <strong>{brl(titulo.total)}</strong>
+                          </span>
+                          <span>
+                            Atraso:{" "}
+                            <strong>
+                              {titulo.diasAtraso > 0
+                                ? `${titulo.diasAtraso} dias`
+                                : "Em dia"}
+                            </strong>
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: 8,
+                        marginTop: 6,
+                      }}
+                    >
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={cancelarEdicao}
+                            style={{
+                              background: "#F1F5F9",
+                              color: "#475569",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={salvarEdicaoTitulo}
+                            disabled={salvandoEdicao}
+                            style={{
+                              background: salvandoEdicao ? "#93C5FD" : "#2563EB",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: salvandoEdicao ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {salvandoEdicao ? "Salvando..." : "Salvar"}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setBaixarTitulo(titulo)}
+                            style={{
+                              background: "#F5F3FF",
+                              color: "#5B21B6",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Baixar
+                          </button>
+                          <button
+                            onClick={() => iniciarEdicao(titulo)}
+                            style={{
+                              background: "#EEF2FF",
+                              color: "#4C1D95",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Editar
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 6, fontSize: 13, color: "#475569" }}>
-                    <span>Vencimento: <strong>{fmtDate(titulo.vencimento)}</strong></span>
-                    <span>Valor: <strong>{brl(titulo.valorPrincipal)}</strong></span>
-                    <span>Juros: <strong>{brl(titulo.juros)}</strong></span>
-                    <span>Total: <strong>{brl(titulo.total)}</strong></span>
-                    <span>Atraso: <strong>{titulo.diasAtraso > 0 ? `${titulo.diasAtraso} dias` : "Em dia"}</strong></span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
-                    <button onClick={() => setBaixarTitulo(titulo)} style={{ background: "#F5F3FF", color: "#5B21B6", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Baixar</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
