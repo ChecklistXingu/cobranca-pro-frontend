@@ -17,7 +17,16 @@ const parseLocalDate = (value: string | null) => {
 };
 
 export default function DashboardPage() {
-  const { titulos, setTitulos, setClientes, getCliente, disparos, setDisparos, addToast } = useStore();
+  const {
+    titulos,
+    setTitulos,
+    setClientes,
+    getCliente,
+    disparos,
+    setDisparos,
+    addToast,
+    telaLimpaAtiva,
+  } = useStore();
   const now = new Date();
   const [dataInicio, setDataInicio] = useState(() => formatInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [dataFim, setDataFim] = useState(() => formatInputDate(now));
@@ -25,6 +34,11 @@ export default function DashboardPage() {
 
   // Carregar dados do Atlas ao montar o componente (mesma lógica da página Títulos)
   useEffect(() => {
+    if (telaLimpaAtiva) {
+      setCarregando(false);
+      return;
+    }
+
     const carregarDados = async () => {
       try {
         setCarregando(true);
@@ -58,7 +72,7 @@ export default function DashboardPage() {
     };
 
     carregarDados();
-  }, [setTitulos, setClientes, setDisparos, addToast]);
+  }, [setTitulos, setClientes, setDisparos, addToast, telaLimpaAtiva]);
 
   const titulosFiltrados = useMemo(() => {
     if (!dataInicio && !dataFim) return titulos;

@@ -232,6 +232,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         addToast(data.error || "Erro na importação", "error");
         return false;
       }
+      limparTelaLimpa();
       await Promise.all([refetchTitulos()]);
       const clis = await apiFetch("/api/clientes");
       setClientesState(await clis.json());
