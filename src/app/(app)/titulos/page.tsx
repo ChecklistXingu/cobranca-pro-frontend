@@ -110,7 +110,7 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: { open: boolean; titu
 const STATUS_OPTIONS = ["ABERTO", "VENCIDO", "RECEBIDO", "NEGOCIADO", "CANCELADO"] as const;
 
 export default function TitulosPage() {
-  const { titulos, setTitulos, setClientes, getCliente, addToast, templates } = useStore();
+  const { titulos, titulosLembretes, titulosCobranca, setTitulos, setClientes, getCliente, addToast, templates } = useStore();
   const [aba, setAba] = useState<"TITULOS" | "LEMBRETES" | "FATURADOS">("TITULOS");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("TODOS");
@@ -183,7 +183,10 @@ export default function TitulosPage() {
     carregarDados();
   }, [setTitulos, setClientes, addToast]);
 
-  const filteredTitulos = useMemo(() => titulos.filter(t => {
+  // Use the appropriate titles list based on the selected tab
+  const currentTitulos = aba === "LEMBRETES" ? titulosLembretes : titulosCobranca;
+
+  const filteredTitulos = useMemo(() => currentTitulos.filter(t => {
     const c = getCliente(t.clienteId);
     const matchSearch = !search || c.nome.toLowerCase().includes(search.toLowerCase()) || t.numeroNF.includes(search) || (t.numeroTitulo ?? "").includes(search);
     const matchStatus = filterStatus === "TODOS" || t.status === filterStatus;
@@ -194,7 +197,7 @@ export default function TitulosPage() {
       filterFaixa === "30+" ? t.diasAtraso > 30 : true
     );
     return matchSearch && matchStatus && matchFaixa;
-  }), [titulos, search, filterStatus, filterFaixa, getCliente]);
+  }), [currentTitulos, search, filterStatus, filterFaixa, getCliente]);
 
   const gruposPorCliente = useMemo<GrupoCliente[]>(() => {
     const agrupado = new Map<string, Titulo[]>();

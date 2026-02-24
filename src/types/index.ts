@@ -9,6 +9,8 @@ export interface Cliente {
   documento?: string;
 }
 
+export type TipoImportacao = "TITULO" | "LEMBRETE";
+
 export interface Titulo {
   id: string;
   clienteId: string;
@@ -23,6 +25,8 @@ export interface Titulo {
   chaveMatch: string;
   createdAt: string;
   ultimoDisparo?: string | null;
+  tipoImportacao?: TipoImportacao;
+  dataReferenciaImportacao?: string;
 }
 
 export interface Recebimento {

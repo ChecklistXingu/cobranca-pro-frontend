@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { brl } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
-import { parseCsvText, buildCarteiraFromRows } from "@/lib/csv";
+import { parseCsvText, buildCarteiraFromRows, type ParsedRow } from "@/lib/csv";
 import type { Carteira } from "@/types";
 
 export default function ImportacoesPage() {
@@ -15,6 +15,8 @@ export default function ImportacoesPage() {
   const [rawCount, setRawCount] = useState(0);
   const [importando, setImportando] = useState(false);
   const [limpando, setLimpando] = useState(false);
+  const [dataReferencia, setDataReferencia] = useState(() => new Date().toISOString().split("T")[0]);
+  const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = async (file: File | null) => {
@@ -23,9 +25,18 @@ export default function ImportacoesPage() {
     setFilename(file.name);
     const text = await file.text();
     const rows = parseCsvText(text);
-    setRawCount(rows.length);
-    setCarteira(buildCarteiraFromRows(rows));
+    setParsedRows(rows);
   };
+
+  useEffect(() => {
+    if (!parsedRows || !parsedRows.length) {
+      setCarteira(null);
+      setRawCount(0);
+      return;
+    }
+    setRawCount(parsedRows.length);
+    setCarteira(buildCarteiraFromRows(parsedRows, dataReferencia));
+  }, [parsedRows, dataReferencia]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -45,6 +56,7 @@ export default function ImportacoesPage() {
         body: JSON.stringify({
           clientes: carteira.clientes,
           titulos: carteira.titulos,
+          dataReferencia,
         }),
       });
 
@@ -58,6 +70,7 @@ export default function ImportacoesPage() {
       setCarteira(null);
       setFilename(null);
       setRawCount(0);
+      setParsedRows(null);
     } catch (error) {
       console.error("Erro ao importar:", error);
       const msg = error instanceof Error ? error.message : "Erro ao importar para o banco";
@@ -85,6 +98,9 @@ export default function ImportacoesPage() {
       // Limpar também do localStorage
       setTitulos(() => []);
       setClientes(() => []);
+      setParsedRows(null);
+      setCarteira(null);
+      setFilename(null);
     } catch (error) {
       console.error("Erro ao limpar:", error);
       const msg = error instanceof Error ? error.message : "Erro ao limpar dados";
@@ -111,6 +127,18 @@ export default function ImportacoesPage() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Importações</h1>
           <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Importe CSV com clientes e títulos em lote.</p>
+          <div style={{ marginTop: 10 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#475569", marginRight: 8 }}>Data de referência:</label>
+            <input
+              type="date"
+              value={dataReferencia}
+              onChange={e => setDataReferencia(e.target.value)}
+              style={{ border: "1px solid #CBD5E1", borderRadius: 8, padding: "6px 12px", fontSize: 13 }}
+            />
+            <span style={{ fontSize: 12, color: "#94A3B8", marginLeft: 8 }}>
+              • Vencidos até o dia anterior entram em &quot;Títulos&quot;. Vencidos no dia selecionado viram &quot;Lembretes&quot;.
+            </span>
+          </div>
         </div>
         <button 
           onClick={limparDia}

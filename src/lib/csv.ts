@@ -1,4 +1,4 @@
-import type { Carteira, Cliente, Titulo } from "@/types";
+import type { Carteira, Cliente, Titulo, TipoImportacao } from "@/types";
 
 function norm(s: string) { return (s ?? "").toString().trim(); }
 function normKey(s: string) { return norm(s).toLowerCase().replace(/\s+/g, " "); }
@@ -137,9 +137,11 @@ export function parseCsvText(csvText: string): ParsedRow[] {
   }).filter(p => p.nome && (p.numeroNF || p.numeroTitulo));
 }
 
-export function buildCarteiraFromRows(rows: ParsedRow[]): Carteira {
+export function buildCarteiraFromRows(rows: ParsedRow[], dataReferenciaISO: string): Carteira {
   const clientesMap = new Map<string, Cliente>();
   const titulos: Titulo[] = [];
+  const referencia = dataReferenciaISO ? new Date(dataReferenciaISO) : new Date();
+  referencia.setHours(0, 0, 0, 0);
 
   for (const r of rows) {
     const clienteKey = `${normKey(r.nome)}__${digitsOnly(r.telefone ?? "")}`;
@@ -152,6 +154,27 @@ export function buildCarteiraFromRows(rows: ParsedRow[]): Carteira {
     const numTitulosRaw = r.numeroTitulo ? r.numeroTitulo.split(/[;,|]/).map(s => s.trim()).filter(Boolean) : [undefined];
 
     for (const nt of numTitulosRaw) {
+      let diasAtrasoCalculado = r.diasAtraso;
+      let tipoImportacao: TipoImportacao = "TITULO";
+      let vencimentoDate: Date | null = null;
+
+      if (r.vencimento) {
+        vencimentoDate = new Date(r.vencimento);
+        vencimentoDate.setHours(0, 0, 0, 0);
+        const diffMs = referencia.getTime() - vencimentoDate.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays > 0) {
+          diasAtrasoCalculado = diffDays;
+          tipoImportacao = "TITULO";
+        } else if (diffDays === 0) {
+          diasAtrasoCalculado = 0;
+          tipoImportacao = "LEMBRETE";
+        } else {
+          diasAtrasoCalculado = 0;
+          tipoImportacao = "LEMBRETE";
+        }
+      }
+
       const numeroNF = r.numeroNF || "NF-N/D";
       const chaveMatch = `${numeroNF}__${r.valorPrincipal.toFixed(2)}`;
 
@@ -164,11 +187,13 @@ export function buildCarteiraFromRows(rows: ParsedRow[]): Carteira {
         valorPrincipal: r.valorPrincipal,
         juros: r.juros,
         total: r.total,
-        diasAtraso: r.diasAtraso,
-        status: r.diasAtraso > 0 ? "VENCIDO" : "ABERTO",
+        diasAtraso: diasAtrasoCalculado,
+        status: diasAtrasoCalculado > 0 ? "VENCIDO" : "ABERTO",
         chaveMatch,
         createdAt: new Date().toISOString(),
         ultimoDisparo: null,
+        tipoImportacao,
+        dataReferenciaImportacao: referencia.toISOString().split("T")[0],
       });
     }
   }

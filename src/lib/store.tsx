@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import type { Cliente, Titulo, Recebimento, Disparo, Template } from "@/types";
 import { mockTemplates } from "@/lib/mock/data";
 import { simpleId } from "@/lib/utils";
@@ -13,6 +13,8 @@ interface Store {
   setClientes: (fn: (prev: Cliente[]) => Cliente[]) => void;
   titulos: Titulo[];
   setTitulos: (fn: (prev: Titulo[]) => Titulo[]) => void;
+  titulosLembretes: Titulo[];
+  titulosCobranca: Titulo[];
   recebimentos: Recebimento[];
   setRecebimentos: (fn: (prev: Recebimento[]) => Recebimento[]) => void;
   disparos: Disparo[];
@@ -46,7 +48,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const setClientes = useCallback((fn: (prev: Cliente[]) => Cliente[]) => setClientesState(fn), []);
-  const setTitulos = useCallback((fn: (prev: Titulo[]) => Titulo[]) => setTitulosState(fn), []);
+  const setTitulos = useCallback((fn: (prev: Titulo[]) => Titulo[]) => setTitulosState(prev => fn(prev)), []);
   const setRecebimentos = useCallback((fn: (prev: Recebimento[]) => Recebimento[]) => setRecebimentosState(fn), []);
   const setDisparos = useCallback((fn: (prev: Disparo[]) => Disparo[]) => setDisparosState(fn), []);
   const setTemplates = useCallback((fn: (prev: Template[]) => Template[]) => setTemplatesState(fn), []);
@@ -56,6 +58,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToasts(p => [...p, { id, message, type }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500);
   }, []);
+
+  const titulosLembretes = useMemo(
+    () => titulos.filter(t => t.tipoImportacao === "LEMBRETE"),
+    [titulos]
+  );
+
+  const titulosCobranca = useMemo(
+    () => titulos.filter(t => !t.tipoImportacao || t.tipoImportacao === "TITULO"),
+    [titulos]
+  );
 
   const getCliente = useCallback((id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" }, [clientes]);
 
@@ -217,6 +229,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreCtx.Provider value={{
       clientes, setClientes,
       titulos, setTitulos,
+      titulosCobranca,
+      titulosLembretes,
       recebimentos, setRecebimentos,
       disparos, setDisparos,
       templates, setTemplates,
