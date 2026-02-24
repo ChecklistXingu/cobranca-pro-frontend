@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import type { Titulo, Cliente, Disparo } from "@/types";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -17,28 +18,17 @@ const parseLocalDate = (value: string | null) => {
 };
 
 export default function DashboardPage() {
-  const {
-    titulos,
-    setTitulos,
-    setClientes,
-    getCliente,
-    disparos,
-    setDisparos,
-    addToast,
-    telaLimpaAtiva,
-  } = useStore();
+  const { addToast } = useStore();
   const now = new Date();
   const [dataInicio, setDataInicio] = useState(() => formatInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [dataFim, setDataFim] = useState(() => formatInputDate(now));
   const [carregando, setCarregando] = useState(true);
+  const [titulosData, setTitulosData] = useState<Titulo[]>([]);
+  const [clientesData, setClientesData] = useState<Cliente[]>([]);
+  const [disparosData, setDisparosData] = useState<Disparo[]>([]);
 
   // Carregar dados do Atlas ao montar o componente (mesma lógica da página Títulos)
   useEffect(() => {
-    if (telaLimpaAtiva) {
-      setCarregando(false);
-      return;
-    }
-
     const carregarDados = async () => {
       try {
         setCarregando(true);
@@ -47,21 +37,21 @@ export default function DashboardPage() {
         const resTitulos = await apiFetch("/api/titulos");
         if (resTitulos.ok) {
           const titulosData = await resTitulos.json();
-          setTitulos(() => titulosData);
+          setTitulosData(titulosData);
         }
 
         // Buscar clientes
         const resClientes = await apiFetch("/api/clientes");
         if (resClientes.ok) {
           const clientesData = await resClientes.json();
-          setClientes(() => clientesData);
+          setClientesData(clientesData);
         }
 
         // Buscar disparos
         const resDisparos = await apiFetch("/api/disparos");
         if (resDisparos.ok) {
           const disparosData = await resDisparos.json();
-          setDisparos(() => disparosData);
+          setDisparosData(disparosData);
         }
       } catch (error) {
         console.error("Erro ao carregar dados:", error);
@@ -72,11 +62,19 @@ export default function DashboardPage() {
     };
 
     carregarDados();
-  }, [setTitulos, setClientes, setDisparos, addToast, telaLimpaAtiva]);
+  }, [addToast]);
+
+  const getClienteNome = useMemo(() => {
+    const mapa = new Map<string, string>();
+    clientesData.forEach(c => mapa.set(c.id, c.nome));
+    return mapa;
+  }, [clientesData]);
 
   const titulosFiltrados = useMemo(() => {
-    if (!dataInicio && !dataFim) return titulos;
-    const filtrados = titulos.filter(t => {
+    if (!dataInicio && !dataFim) return titulosData;
+    const fonte = titulosData;
+    if (!fonte.length) return [] as Titulo[];
+    const filtrados = fonte.filter(t => {
       if (!t.createdAt) return true;
       const tituloDate = new Date(t.createdAt);
 
@@ -91,62 +89,73 @@ export default function DashboardPage() {
       return true;
     });
     return filtrados;
-  }, [titulos, dataInicio, dataFim]);
+  }, [titulosData, dataInicio, dataFim]);
 
   const stats = useMemo(() => {
-    const emAberto = titulosFiltrados.filter(t => t.status === "ABERTO").reduce((a, t) => a + Number(t.total || 0), 0);
-    const vencidos = titulosFiltrados.filter(t => t.status === "VENCIDO").reduce((a, t) => a + Number(t.total || 0), 0);
-    const recebido = titulosFiltrados.filter(t => t.status === "RECEBIDO").reduce((a, t) => a + Number(t.total || 0), 0);
-    const total = titulosFiltrados.reduce((a, t) => a + Number(t.total || 0), 0);
+    const somaStatus = (status: Titulo["status"]) =>
+      titulosFiltrados.reduce((acc, titulo) =>
+        titulo.status === status ? acc + Number(titulo.total || 0) : acc
+      , 0);
+
+    const emAberto = somaStatus("ABERTO");
+    const vencidos = somaStatus("VENCIDO");
+    const recebido = somaStatus("RECEBIDO");
+    const negociado = somaStatus("NEGOCIADO");
+    const total = titulosFiltrados.reduce((acc, titulo) => acc + Number(titulo.total || 0), 0);
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
-    const disparosEnviados = disparos.filter(d => d.status === "ENVIADO").length;
+    const disparosEnviados = disparosData.filter(d => d.status === "ENVIADO").length;
 
     const donutData = [
       { name: "Aberto", value: emAberto, color: "#3B82F6" },
       { name: "Vencido", value: vencidos, color: "#EF4444" },
       { name: "Recebido", value: recebido, color: "#10B981" },
-      { name: "Negociado", value: titulos.filter(t => t.status === "NEGOCIADO").reduce((a, t) => a + Number(t.total || 0), 0), color: "#8B5CF6" },
+      { name: "Negociado", value: negociado, color: "#8B5CF6" },
     ];
 
-    const topAtraso = [...titulosFiltrados].filter(t => t.diasAtraso > 0).sort((a, b) => Number(b.total || 0) - Number(a.total || 0)).slice(0, 5);
+    const topAtraso = [...titulosFiltrados]
+      .filter(t => t.diasAtraso > 0)
+      .sort((a, b) => Number(b.total || 0) - Number(a.total || 0))
+      .slice(0, 5);
 
-    // Dynamic line data based on real titles
-    const lineData = titulosFiltrados.length > 0 ? [
-      { dia: "01/02", recebido: recebido * 0.3, aberto: emAberto * 0.8 },
-      { dia: "05/02", recebido: recebido * 0.5, aberto: emAberto * 0.6 },
-      { dia: "10/02", recebido: recebido * 0.7, aberto: emAberto * 0.4 },
-      { dia: "15/02", recebido: recebido * 0.9, aberto: emAberto * 0.2 },
-      { dia: "20/02", recebido: recebido, aberto: emAberto * 0.1 },
-    ] : [
-      { dia: "01/02", recebido: 0, aberto: 0 },
-      { dia: "05/02", recebido: 0, aberto: 0 },
-      { dia: "10/02", recebido: 0, aberto: 0 },
-      { dia: "15/02", recebido: 0, aberto: 0 },
-      { dia: "20/02", recebido: 0, aberto: 0 },
-    ];
+    const inicio = parseLocalDate(dataInicio);
+    const fim = parseLocalDate(dataFim);
+    const serieTemporal: { dia: string; recebido: number; aberto: number }[] = [];
+    if (inicio && fim) {
+      for (let dt = new Date(inicio); dt <= fim; dt.setDate(dt.getDate() + 1)) {
+        const key = fmtDate(dt.toISOString());
+        const dailyRecebido = titulosFiltrados
+          .filter(t => t.status === "RECEBIDO" && t.createdAt?.startsWith(dt.toISOString().split("T")[0]))
+          .reduce((acc, titulo) => acc + Number(titulo.total || 0), 0);
+        const dailyAberto = titulosFiltrados
+          .filter(t => ["ABERTO", "VENCIDO"].includes(t.status) && t.createdAt?.startsWith(dt.toISOString().split("T")[0]))
+          .reduce((acc, titulo) => acc + Number(titulo.total || 0), 0);
+        serieTemporal.push({ dia: key, recebido: dailyRecebido, aberto: dailyAberto });
+      }
+    }
 
-    // Dynamic bar data based on overdue titles
-    const barData = titulosFiltrados.length > 0 ? [
-      { faixa: "0–7d", valor: titulosFiltrados.filter(t => t.diasAtraso > 0 && t.diasAtraso <= 7).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#F59E0B" },
-      { faixa: "8–15d", valor: titulosFiltrados.filter(t => t.diasAtraso > 7 && t.diasAtraso <= 15).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#F97316" },
-      { faixa: "16–30d", valor: titulosFiltrados.filter(t => t.diasAtraso > 15 && t.diasAtraso <= 30).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#EF4444" },
-      { faixa: "30+d", valor: titulosFiltrados.filter(t => t.diasAtraso > 30).reduce((a, t) => a + Number(t.total || 0), 0), fill: "#991B1B" },
-    ] : [
-      { faixa: "0–7d", valor: 0, fill: "#F59E0B" },
-      { faixa: "8–15d", valor: 0, fill: "#F97316" },
-      { faixa: "16–30d", valor: 0, fill: "#EF4444" },
-      { faixa: "30+d", valor: 0, fill: "#991B1B" },
+    const lineData = serieTemporal.length ? serieTemporal : [{ dia: "-", recebido: 0, aberto: 0 }];
+
+    const rangeValue = (min: number, max: number) =>
+      titulosFiltrados.reduce((acc, titulo) =>
+        titulo.diasAtraso > min && titulo.diasAtraso <= max ? acc + Number(titulo.total || 0) : acc
+      , 0);
+
+    const barData = [
+      { faixa: "0–7d", valor: rangeValue(0, 7), fill: "#F59E0B" },
+      { faixa: "8–15d", valor: rangeValue(7, 15), fill: "#F97316" },
+      { faixa: "16–30d", valor: rangeValue(15, 30), fill: "#EF4444" },
+      { faixa: "30+d", valor: titulosFiltrados.reduce((acc, titulo) => titulo.diasAtraso > 30 ? acc + Number(titulo.total || 0) : acc, 0), fill: "#991B1B" },
     ];
 
     return { emAberto, vencidos, recebido, taxa, disparosEnviados, donutData, topAtraso, lineData, barData };
-  }, [titulosFiltrados, disparos]);
+  }, [titulosFiltrados, disparosData, dataInicio, dataFim]);
 
   const kpis = [
     { label: "Em Aberto", value: brl(stats.emAberto), color: "#1D4ED8", bg: "#EFF6FF", icon: "📋" },
     { label: "Total Vencido", value: brl(stats.vencidos), color: "#B91C1C", bg: "#FEF2F2", icon: "⚠️" },
     { label: "Recebido no mês", value: brl(stats.recebido), color: "#065F46", bg: "#ECFDF5", icon: "✅" },
     { label: "Taxa Recuperação", value: `${stats.taxa}%`, color: "#6D28D9", bg: "#F5F3FF", icon: "📈" },
-    { label: "Títulos totais", value: titulos.length, color: "#0369A1", bg: "#F0F9FF", icon: "🗂" },
+    { label: "Títulos totais", value: titulosData.length, color: "#0369A1", bg: "#F0F9FF", icon: "🗂" },
     { label: "Disparos enviados", value: stats.disparosEnviados, color: "#92400E", bg: "#FFFBEB", icon: "💬" },
   ];
 
@@ -246,7 +255,9 @@ export default function DashboardPage() {
               <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, background: "#F8FAFC" }}>
                 <div style={{ width: 22, height: 22, borderRadius: "50%", background: i < 2 ? "#FEE2E2" : "#FEF3C7", color: i < 2 ? "#B91C1C" : "#92400E", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getCliente(t.clienteId).nome}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {getClienteNome.get(t.clienteId) ?? "—"}
+                </div>
                   <div style={{ fontSize: 11, color: "#94A3B8" }}>{t.diasAtraso}d em atraso</div>
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#B91C1C", whiteSpace: "nowrap" }}>{brl(t.total)}</div>
