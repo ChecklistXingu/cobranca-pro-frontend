@@ -130,6 +130,11 @@ export default function TitulosPage() {
     status: "ABERTO",
   });
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [editingClienteId, setEditingClienteId] = useState<string | null>(null);
+  const [editClienteForm, setEditClienteForm] = useState({
+    nome: "",
+    telefone: "",
+  });
   const templatePadrao = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
 
   // Carregar dados do Atlas ao montar o componente
@@ -242,6 +247,18 @@ export default function TitulosPage() {
     }
   };
 
+  const sincronizarClientes = async () => {
+    try {
+      const res = await apiFetch("/api/clientes");
+      if (!res.ok) throw new Error("Não foi possível atualizar os clientes");
+      const clientesApi = await res.json();
+      setClientes(() => clientesApi);
+    } catch (error) {
+      console.error("sync clientes", error);
+      addToast(error instanceof Error ? error.message : "Erro ao sincronizar clientes", "error");
+    }
+  };
+
   const iniciarEdicao = (titulo: Titulo) => {
     const vencimentoInput =
       titulo.vencimento ? new Date(titulo.vencimento).toISOString().split("T")[0] : "";
@@ -254,6 +271,13 @@ export default function TitulosPage() {
       vencimento: vencimentoInput,
       status: titulo.status,
     });
+    if (grupoDetalhe) {
+      setEditingClienteId(grupoDetalhe.clienteId);
+      setEditClienteForm({
+        nome: grupoDetalhe.clienteNome,
+        telefone: grupoDetalhe.clienteTelefone ?? "",
+      });
+    }
   };
 
   const cancelarEdicao = () => {
@@ -265,6 +289,11 @@ export default function TitulosPage() {
       juros: "",
       vencimento: "",
       status: "ABERTO",
+    });
+    setEditingClienteId(null);
+    setEditClienteForm({
+      nome: "",
+      telefone: "",
     });
   };
 
@@ -294,7 +323,7 @@ export default function TitulosPage() {
         return diff > 0 ? diff : 0;
       })();
 
-      const payload = {
+      const payloadTitulo = {
         numeroNF: editForm.numeroNF.trim(),
         numeroTitulo: editForm.numeroTitulo.trim() || undefined,
         valorPrincipal,
@@ -307,18 +336,35 @@ export default function TitulosPage() {
         status: editForm.status,
       };
 
-      const res = await apiFetch(`/api/titulos/${editingTitulo.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((data as any)?.error ?? "Erro ao atualizar título");
+      // Atualizar cliente (cabeçalho) se estivermos com um cliente em edição
+      if (editingClienteId && editClienteForm.nome.trim()) {
+        const payloadCliente = {
+          nome: editClienteForm.nome.trim(),
+          telefone: editClienteForm.telefone.trim() || undefined,
+        };
+        const resCliente = await apiFetch(`/api/clientes/${editingClienteId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payloadCliente),
+        });
+        const dataCliente = await resCliente.json().catch(() => ({}));
+        if (!resCliente.ok) {
+          throw new Error((dataCliente as any)?.error ?? "Erro ao atualizar cliente");
+        }
       }
 
-      await sincronizarTitulos();
+      const resTitulo = await apiFetch(`/api/titulos/${editingTitulo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payloadTitulo),
+      });
+
+      const dataTitulo = await resTitulo.json().catch(() => ({}));
+      if (!resTitulo.ok) {
+        throw new Error((dataTitulo as any)?.error ?? "Erro ao atualizar título");
+      }
+
+      await Promise.all([sincronizarTitulos(), sincronizarClientes()]);
       addToast("Título atualizado com sucesso!");
       cancelarEdicao();
       setGrupoDetalhe(null);
@@ -561,9 +607,35 @@ export default function TitulosPage() {
         {grupoDetalhe && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ background: "#F8FAFC", borderRadius: 10, padding: 12, fontSize: 13, color: "#475569" }}>
-              <div style={{ fontWeight: 700, color: "#0F172A" }}>{grupoDetalhe.clienteNome}</div>
-              <div>Telefone: {grupoDetalhe.clienteTelefone ?? "—"}</div>
-              <div>Total aberto: <strong>{brl(grupoDetalhe.totalGeral)}</strong> ({grupoDetalhe.titulos.length} títulos)</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 4 }}>
+                {editingTitulo ? (
+                  <input
+                    value={editClienteForm.nome}
+                    onChange={e => setEditClienteForm(p => ({ ...p, nome: e.target.value }))}
+                    style={{ ...inputStyle, maxWidth: 260, fontWeight: 700, color: "#0F172A" }}
+                  />
+                ) : (
+                  <div style={{ fontWeight: 700, color: "#0F172A" }}>{grupoDetalhe.clienteNome}</div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div>
+                  <span>Telefone: </span>
+                  {editingTitulo ? (
+                    <input
+                      value={editClienteForm.telefone}
+                      onChange={e => setEditClienteForm(p => ({ ...p, telefone: e.target.value }))}
+                      placeholder="Telefone com DDD"
+                      style={{ ...inputStyle, maxWidth: 220, display: "inline-block" }}
+                    />
+                  ) : (
+                    <span>{grupoDetalhe.clienteTelefone ?? "—"}</span>
+                  )}
+                </div>
+                <div>
+                  Total aberto: <strong>{brl(grupoDetalhe.totalGeral)}</strong> ({grupoDetalhe.titulos.length} títulos)
+                </div>
+              </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {grupoDetalhe.titulos.map(titulo => {
