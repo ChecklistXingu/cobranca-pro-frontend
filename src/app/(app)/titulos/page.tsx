@@ -111,6 +111,7 @@ const STATUS_OPTIONS = ["ABERTO", "VENCIDO", "RECEBIDO", "NEGOCIADO", "CANCELADO
 
 export default function TitulosPage() {
   const { titulos, setTitulos, setClientes, getCliente, addToast, templates } = useStore();
+  const [aba, setAba] = useState<"TITULOS" | "LEMBRETES" | "FATURADOS">("TITULOS");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("TODOS");
   const [filterFaixa, setFilterFaixa] = useState("TODAS");
@@ -136,7 +137,21 @@ export default function TitulosPage() {
     telefone: "",
   });
   const [anexos, setAnexos] = useState<File[]>([]);
-  const templatePadrao = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
+  const hojeInput = () => new Date().toISOString().split("T")[0];
+  const [fatForm, setFatForm] = useState({
+    nome: "",
+    dataFaturamento: hojeInput(),
+    dataVencimento: hojeInput(),
+    valor: "",
+    telefone: "",
+    agendarEmDias: 0,
+  });
+  const [fatSalvando, setFatSalvando] = useState(false);
+  const [fatAnexos, setFatAnexos] = useState<File[]>([]);
+
+  const templateVencido = templates.find(t => t.nome === "Vencido")?.nome ?? templates[0]?.nome ?? "Vencido";
+  const templateLembrete = templates.find(t => t.nome === "1º Aviso")?.nome ?? templateVencido;
+  const templatePadrao = aba === "LEMBRETES" ? templateLembrete : templateVencido;
 
   // Carregar dados do Atlas ao montar o componente
   useEffect(() => {
@@ -513,33 +528,337 @@ export default function TitulosPage() {
     });
   };
 
+  const handleFatArquivosChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter(f =>
+      f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+    );
+    if (!files.length) {
+      setFatAnexos([]);
+      return;
+    }
+    if (files.length > 5) {
+      addToast("Você pode anexar no máximo 5 PDFs.", "error");
+    }
+    setFatAnexos(files.slice(0, 5));
+  };
+
+  const enviarFaturamento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (fatSalvando) return;
+
+    try {
+      setFatSalvando(true);
+      const valorNumber = Number(fatForm.valor.toString().replace(",", ".")) || 0;
+      if (!fatForm.nome.trim() || !valorNumber || !fatForm.telefone.trim()) {
+        addToast("Preencha nome, valor e telefone.", "error");
+        setFatSalvando(false);
+        return;
+      }
+
+      const anexosPayload =
+        fatAnexos.length > 0
+          ? await Promise.all(
+              fatAnexos.slice(0, 5).map(async (file) => {
+                const base64 = await fileToBase64(file);
+                const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
+                return {
+                  document: base64,
+                  fileName: file.name,
+                  extension: ext,
+                };
+              })
+            )
+          : [];
+
+      const res = await apiFetch("/api/faturamentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: fatForm.nome.trim(),
+          telefone: fatForm.telefone.trim(),
+          dataFaturamento: fatForm.dataFaturamento,
+          dataVencimento: fatForm.dataVencimento,
+          valor: valorNumber,
+          agendarEmDias: Number(fatForm.agendarEmDias) || 0,
+          anexos: anexosPayload,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data?.ok === false) {
+        addToast(data?.error || "Falha ao enviar faturamento via Z-API", "error");
+      } else {
+        addToast("Faturamento registrado e mensagem enviada via Z-API! ✅");
+        setFatForm({
+          nome: "",
+          dataFaturamento: hojeInput(),
+          dataVencimento: hojeInput(),
+          valor: "",
+          telefone: "",
+          agendarEmDias: fatForm.agendarEmDias,
+        });
+        setFatAnexos([]);
+      }
+    } catch (error) {
+      console.error("erro faturamento", error);
+      addToast("Erro ao enviar faturamento", "error");
+    } finally {
+      setFatSalvando(false);
+    }
+  };
+
+  const tituloPagina =
+    aba === "LEMBRETES"
+      ? "Lembretes de vencimento"
+      : aba === "FATURADOS"
+      ? "Faturados do dia"
+      : "Títulos em cobrança";
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Títulos</h1>
-          <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>{filteredTitulos.length} títulos em {gruposPorCliente.length} clientes</p>
-        </div>
-        <button
-          onClick={dispararLote}
-          disabled={disparandoLote || vencidosParaDisparo.length === 0}
-          style={{
-            background: disparandoLote ? "#a855f7" : vencidosParaDisparo.length === 0 ? "#cbd5f5" : "#7C3AED",
-            color: "#fff",
-            border: "none",
-            borderRadius: 10,
-            padding: "10px 22px",
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: disparandoLote || vencidosParaDisparo.length === 0 ? "not-allowed" : "pointer",
-            boxShadow: "0 10px 20px rgba(124,58,237,0.2)",
-            transition: "background 0.2s",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {disparandoLote ? "Disparando..." : `📱 Disparar Lote (${vencidosParaDisparo.length})`}
-        </button>
+      {/* ABAS INTERNAS */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 18, background: "#F1F5F9", borderRadius: 10, padding: 4, width: "fit-content" }}>
+        {[
+          { id: "TITULOS" as const, label: "Títulos" },
+          { id: "LEMBRETES" as const, label: "Lembretes" },
+          { id: "FATURADOS" as const, label: "Faturados do dia" },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setAba(tab.id)}
+            style={{
+              background: aba === tab.id ? "#fff" : "transparent",
+              border: "none",
+              borderRadius: 8,
+              padding: "7px 20px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: aba === tab.id ? "#0F172A" : "#64748B",
+              cursor: "pointer",
+              boxShadow: aba === tab.id ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
+
+      {aba === "FATURADOS" ? (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 24, marginBottom: 10 }}>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>{tituloPagina}</h1>
+              <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Envie mensagem de faturamento com nota fiscal e boleto em anexo.</p>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.1fr) minmax(0,1fr)", gap: 24, alignItems: "flex-start" }}>
+            {/* FORMULÁRIO */}
+            <form onSubmit={enviarFaturamento} style={{ background: "#fff", borderRadius: 14, border: "1px solid #E2E8F0", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Dados do faturamento</h2>
+              <FormField label="Nome do cliente">
+                <input
+                  value={fatForm.nome}
+                  onChange={e => setFatForm(p => ({ ...p, nome: e.target.value }))}
+                  placeholder="Ex: João da Silva"
+                  style={inputStyle}
+                />
+              </FormField>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                <FormField label="Data do faturamento">
+                  <input
+                    type="date"
+                    value={fatForm.dataFaturamento}
+                    onChange={e => setFatForm(p => ({ ...p, dataFaturamento: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </FormField>
+                <FormField label="Data de vencimento">
+                  <input
+                    type="date"
+                    value={fatForm.dataVencimento}
+                    onChange={e => setFatForm(p => ({ ...p, dataVencimento: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </FormField>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                <FormField label="Valor (R$)">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={fatForm.valor}
+                    onChange={e => setFatForm(p => ({ ...p, valor: e.target.value }))}
+                    placeholder="Ex: 15000"
+                    style={inputStyle}
+                  />
+                </FormField>
+                <FormField label="Telefone (WhatsApp)">
+                  <input
+                    value={fatForm.telefone}
+                    onChange={e => setFatForm(p => ({ ...p, telefone: e.target.value }))}
+                    placeholder="Ex: 5566999999999"
+                    style={inputStyle}
+                  />
+                </FormField>
+              </div>
+              <FormField label="Enviar lembrete automático em (dias)">
+                <input
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={fatForm.agendarEmDias}
+                  onChange={e => setFatForm(p => ({ ...p, agendarEmDias: Number(e.target.value) }))}
+                  style={inputStyle}
+                />
+              </FormField>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    border: "1px dashed #93C5FD",
+                    background: "#EFF6FF",
+                    color: "#1D4ED8",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span>📎 Anexar PDFs (nota e boleto)</span>
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    multiple
+                    onChange={handleFatArquivosChange}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                {fatAnexos.length > 0 && (
+                  <div style={{ fontSize: 11, color: "#64748B", textAlign: "right" }}>
+                    {fatAnexos.length} PDF(s) selecionado(s)
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFatForm({
+                      nome: "",
+                      dataFaturamento: hojeInput(),
+                      dataVencimento: hojeInput(),
+                      valor: "",
+                      telefone: "",
+                      agendarEmDias: fatForm.agendarEmDias,
+                    });
+                    setFatAnexos([]);
+                  }}
+                  style={{
+                    border: "none",
+                    background: "#F1F5F9",
+                    color: "#475569",
+                    borderRadius: 10,
+                    padding: "9px 18px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Limpar
+                </button>
+                <button
+                  type="submit"
+                  disabled={fatSalvando}
+                  style={{
+                    border: "none",
+                    background: fatSalvando ? "#93C5FD" : "#2563EB",
+                    color: "#fff",
+                    borderRadius: 10,
+                    padding: "9px 22px",
+                    fontWeight: 700,
+                    cursor: fatSalvando ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {fatSalvando ? "Enviando..." : "Enviar agora"}
+                </button>
+              </div>
+            </form>
+
+            {/* PRÉVIA */}
+            <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #E2E8F0", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0F172A" }}>Prévia da mensagem</h2>
+              <div
+                style={{
+                  background: "#F0FDF4",
+                  border: "1px solid #BBF7D0",
+                  borderRadius: 10,
+                  padding: 14,
+                  fontSize: 13,
+                  color: "#166534",
+                  minHeight: 160,
+                }}
+              >
+                <pre
+                  style={{
+                    margin: 0,
+                    fontFamily: "inherit",
+                    lineHeight: 1.6,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+{`Olá, aqui é da empresa Força Agrícola :)
+
+Obrigado pela sua compra!
+
+Informamos que o pagamento vence em ${fatForm.dataVencimento || "___"}, no valor de R$ ${fatForm.valor || "___"}.
+Segue em anexo a nota fiscal e o boleto.
+
+Ficamos à disposição em caso de dúvidas.
+
+Atenciosamente,
+Equipe Financeira`}
+                </pre>
+              </div>
+              <div style={{ fontSize: 12, color: "#64748B" }}>
+                Lembrete automático:{" "}
+                {fatForm.agendarEmDias && fatForm.agendarEmDias > 0
+                  ? `em ${fatForm.agendarEmDias} dia(s) após ${fatForm.dataFaturamento || "___"}, às 09:00 (horário de Brasília)`
+                  : "desativado"}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>{tituloPagina}</h1>
+              <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>{filteredTitulos.length} títulos em {gruposPorCliente.length} clientes</p>
+            </div>
+            <button
+              onClick={dispararLote}
+              disabled={disparandoLote || vencidosParaDisparo.length === 0}
+              style={{
+                background: disparandoLote ? "#a855f7" : vencidosParaDisparo.length === 0 ? "#cbd5f5" : "#7C3AED",
+                color: "#fff",
+                border: "none",
+                borderRadius: 10,
+                padding: "10px 22px",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: disparandoLote || vencidosParaDisparo.length === 0 ? "not-allowed" : "pointer",
+                boxShadow: "0 10px 20px rgba(124,58,237,0.2)",
+                transition: "background 0.2s",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {disparandoLote ? "Disparando..." : `📱 Disparar Lote (${vencidosParaDisparo.length})`}
+            </button>
+          </div>
 
       {/* FILTERS */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
