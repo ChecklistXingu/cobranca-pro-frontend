@@ -121,6 +121,7 @@ export default function TitulosPage() {
   const [disparandoLote, setDisparandoLote] = useState(false);
   const [enviandoIndividual, setEnviandoIndividual] = useState(false);
   const [carregando, setCarregando] = useState(true);
+  const [limpandoTela, setLimpandoTela] = useState(false);
   const [editingTitulo, setEditingTitulo] = useState<Titulo | null>(null);
   const [editForm, setEditForm] = useState({
     numeroNF: "",
@@ -486,14 +487,53 @@ export default function TitulosPage() {
     setDisparandoLote(false);
   };
 
-  const limparTela = () => {
+  const limparTela = async () => {
     if (!titulos.length) {
       addToast("Não há dados para limpar.", "info");
       return;
     }
-    setTitulos(() => []);
-    setClientes(() => []);
-    addToast("Tela de cobrança limpa. Importe um novo arquivo para preencher novamente.");
+
+    const datasImportacao = Array.from(new Set(
+      titulos
+        .map(t => (t.dataReferenciaImportacao ?? t.createdAt ?? "").split("T")[0])
+        .filter(Boolean)
+    ));
+
+    if (!datasImportacao.length) {
+      addToast("Não foi possível identificar a data de importação para limpeza.", "error");
+      return;
+    }
+
+    const mensagemDatas = datasImportacao
+      .map(data => fmtDate(data))
+      .join(" / ");
+    const confirma = confirm(
+      `Tem certeza que deseja remover definitivamente os dados importados em ${mensagemDatas}?\n\nEssa ação excluirá os títulos e clientes correspondentes no Atlas e não poderá ser desfeita.`
+    );
+    if (!confirma) return;
+
+    setLimpandoTela(true);
+    try {
+      let totalTitulos = 0;
+      let totalClientes = 0;
+
+      for (const dataISO of datasImportacao) {
+        const res = await apiFetch(`/api/importar?data=${dataISO}`, { method: "DELETE" });
+        const resultado = await res.json();
+        totalTitulos += resultado.deletedTitulos ?? 0;
+        totalClientes += resultado.deletedClientes ?? 0;
+      }
+
+      setTitulos(() => []);
+      setClientes(() => []);
+      await Promise.all([sincronizarTitulos(), sincronizarClientes()]);
+      addToast(`🗑️ Removidos ${totalTitulos} títulos e ${totalClientes} cliente(s) do Atlas.`);
+    } catch (error) {
+      console.error("Erro ao limpar dados do Atlas:", error);
+      addToast("Erro ao limpar dados do servidor", "error");
+    } finally {
+      setLimpandoTela(false);
+    }
   };
 
   const fecharDisparoModal = () => {
@@ -882,19 +922,33 @@ Equipe Financeira`}
         </select>
         <button
           onClick={limparTela}
+          disabled={limpandoTela}
           style={{
             border: "1px solid #FCA5A5",
             borderRadius: 10,
-            background: "#FFF1F2",
-            color: "#B91C1C",
+            background: limpandoTela ? "#FECACA" : "#FFF1F2",
+            color: limpandoTela ? "#f87171" : "#B91C1C",
             padding: "8px 14px",
             fontSize: 12,
             fontWeight: 600,
-            cursor: "pointer",
+            cursor: limpandoTela ? "not-allowed" : "pointer",
+            opacity: limpandoTela ? 0.7 : 1,
             whiteSpace: "nowrap",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
-          🧹 Limpar tela
+          {limpandoTela ? (
+            <>
+              <span className="animate-pulse">⏳</span>
+              Limpando...
+            </>
+          ) : (
+            <>
+              🧹 Limpar tela
+            </>
+          )}
         </button>
       </div>
 
