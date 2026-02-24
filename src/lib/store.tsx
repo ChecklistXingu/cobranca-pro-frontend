@@ -10,17 +10,17 @@ interface Toast { id: number; message: string; type: "success" | "error" | "info
 
 interface Store {
   clientes: Cliente[];
-  setClientes: (fn: (prev: Cliente[]) => Cliente[]) => void;
+  setClientes: (next: Cliente[] | ((prev: Cliente[]) => Cliente[])) => void;
   titulos: Titulo[];
-  setTitulos: (fn: (prev: Titulo[]) => Titulo[]) => void;
+  setTitulos: (next: Titulo[] | ((prev: Titulo[]) => Titulo[])) => void;
   titulosLembretes: Titulo[];
   titulosCobranca: Titulo[];
   recebimentos: Recebimento[];
-  setRecebimentos: (fn: (prev: Recebimento[]) => Recebimento[]) => void;
+  setRecebimentos: (next: Recebimento[] | ((prev: Recebimento[]) => Recebimento[])) => void;
   disparos: Disparo[];
-  setDisparos: (fn: (prev: Disparo[]) => Disparo[]) => void;
+  setDisparos: (next: Disparo[] | ((prev: Disparo[]) => Disparo[])) => void;
   templates: Template[];
-  setTemplates: (fn: (prev: Template[]) => Template[]) => void;
+  setTemplates: (next: Template[] | ((prev: Template[]) => Template[])) => void;
   loading: boolean;
   refetchTitulos: () => Promise<void>;
   refetchDisparos: () => Promise<void>;
@@ -47,11 +47,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const setClientes = useCallback((fn: (prev: Cliente[]) => Cliente[]) => setClientesState(fn), []);
-  const setTitulos = useCallback((fn: (prev: Titulo[]) => Titulo[]) => setTitulosState(prev => fn(prev)), []);
-  const setRecebimentos = useCallback((fn: (prev: Recebimento[]) => Recebimento[]) => setRecebimentosState(fn), []);
-  const setDisparos = useCallback((fn: (prev: Disparo[]) => Disparo[]) => setDisparosState(fn), []);
-  const setTemplates = useCallback((fn: (prev: Template[]) => Template[]) => setTemplatesState(fn), []);
+  const applySetter = useCallback(<T,>(
+    setter: React.Dispatch<React.SetStateAction<T>>,
+    next: T | ((prev: T) => T)
+  ) => setter(prev => (typeof next === "function" ? (next as (prev: T) => T)(prev) : next)), []);
+
+  const setClientes = useCallback((next: Cliente[] | ((prev: Cliente[]) => Cliente[])) => applySetter(setClientesState, next), [applySetter]);
+  const setTitulos = useCallback((next: Titulo[] | ((prev: Titulo[]) => Titulo[])) => applySetter(setTitulosState, next), [applySetter]);
+  const setRecebimentos = useCallback((next: Recebimento[] | ((prev: Recebimento[]) => Recebimento[])) => applySetter(setRecebimentosState, next), [applySetter]);
+  const setDisparos = useCallback((next: Disparo[] | ((prev: Disparo[]) => Disparo[])) => applySetter(setDisparosState, next), [applySetter]);
+  const setTemplates = useCallback((next: Template[] | ((prev: Template[]) => Template[])) => applySetter(setTemplatesState, next), [applySetter]);
 
   const addToast = useCallback((message: string, type: Toast["type"] = "success") => {
     const id = Date.now();
