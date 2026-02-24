@@ -976,6 +976,9 @@ Equipe Financeira`}
         {gruposPorCliente.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94A3B8" }}>Nenhum cliente encontrado</div>}
       </div>
 
+        </>
+      )}
+
       {/* DETAIL MODAL */}
       <Modal open={!!grupoDetalhe} onClose={() => setGrupoDetalhe(null)} title={grupoDetalhe ? `Detalhes - ${grupoDetalhe.clienteNome}` : ""} width={560}>
         {grupoDetalhe && (
