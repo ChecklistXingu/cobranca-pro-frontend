@@ -1,19 +1,19 @@
 "use client";
 
-import { ProgressBarProvider } from "@bprogress/next";
+import { AppProgressProvider } from "@bprogress/next";
 import type { ReactNode } from "react";
 
 type Props = { children: ReactNode };
 
 export function ProgressProviderWrapper({ children }: Props) {
   return (
-    <ProgressBarProvider
+    <AppProgressProvider
       height="3px"
       color="#192CFF"
-      showSpinner={false}
+      options={{ showSpinner: false }}
       shallowRouting
     >
       {children}
-    </ProgressBarProvider>
+    </AppProgressProvider>
   );
 }
