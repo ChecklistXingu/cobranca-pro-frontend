@@ -446,6 +446,7 @@ export default function TitulosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tituloId: tituloBase.id,
+          chaveMatch: tituloBase.chaveMatch,
           template: templatePadrao,
           anexos: anexosPayload,
         }),
@@ -461,7 +462,8 @@ export default function TitulosPage() {
       }
     } catch (error) {
       console.error("erro disparo individual", error);
-      addToast("Erro ao enviar mensagem", "error");
+      const msg = error instanceof Error ? error.message : "Erro ao enviar mensagem";
+      addToast(msg, "error");
     } finally {
       setEnviandoIndividual(false);
     }
@@ -487,7 +489,11 @@ export default function TitulosPage() {
         const res = await apiFetch("/api/disparos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tituloId: tituloBase.id, template: templateSelecionado }),
+          body: JSON.stringify({
+            tituloId: tituloBase.id,
+            chaveMatch: tituloBase.chaveMatch,
+            template: templateSelecionado,
+          }),
         });
         const data = await res.json();
         if (!res.ok || data?.ok === false) {
