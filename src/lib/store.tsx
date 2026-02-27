@@ -5,6 +5,7 @@ import type { Cliente, Titulo, Recebimento, Disparo, Template } from "@/types";
 import { mockTemplates } from "@/lib/mock/data";
 import { simpleId } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
+import { readCache, writeCache, clearCache } from "@/lib/cache";
 
 interface Toast { id: number; message: string; type: "success" | "error" | "info"; }
 
@@ -41,6 +42,12 @@ const StoreCtx = createContext<Store | null>(null);
 const STORAGE_CLIENTES = "cobranca-pro:clientes";
 const STORAGE_TITULOS = "cobranca-pro:titulos";
 const STORAGE_TELA_LIMPA = "cobranca-pro:tela-limpa";
+const CACHE_KEYS = {
+  TITULOS: "titulos",
+  CLIENTES: "clientes",
+  RECEBIMENTOS: "recebimentos",
+  DISPAROS: "disparos",
+} as const;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientesState] = useState<Cliente[]>([]);
@@ -109,44 +116,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!telaLimpaReady) return;
     let active = true;
 
+    const sources = [
+      {
+        name: "títulos",
+        key: CACHE_KEYS.TITULOS,
+        allow: !telaLimpaAtiva,
+        setter: (data: Titulo[]) => active && setTitulosState(data),
+        request: () => apiFetch("/api/titulos"),
+      },
+      {
+        name: "clientes",
+        key: CACHE_KEYS.CLIENTES,
+        allow: !telaLimpaAtiva,
+        setter: (data: Cliente[]) => active && setClientesState(data),
+        request: () => apiFetch("/api/clientes"),
+      },
+      {
+        name: "recebimentos",
+        key: CACHE_KEYS.RECEBIMENTOS,
+        allow: true,
+        setter: (data: Recebimento[]) => active && setRecebimentosState(data),
+        request: () => apiFetch("/api/recebimentos"),
+      },
+      {
+        name: "disparos",
+        key: CACHE_KEYS.DISPAROS,
+        allow: true,
+        setter: (data: Disparo[]) => active && setDisparosState(data),
+        request: () => apiFetch("/api/disparos"),
+      },
+    ];
+
+    // Carrega cache imediatamente
+    sources.forEach(src => {
+      if (!src.allow) return;
+      const cachedData = readCache(src.key);
+      if (cachedData) {
+        src.setter(cachedData as any);
+      }
+    });
+
     (async () => {
       try {
-        const endpoints = [
-          {
-            name: "títulos",
-            apply: (data: Titulo[]) => {
-              if (!telaLimpaAtiva && active) setTitulosState(data);
-            },
-            request: apiFetch("/api/titulos"),
-          },
-          {
-            name: "clientes",
-            apply: (data: Cliente[]) => {
-              if (!telaLimpaAtiva && active) setClientesState(data);
-            },
-            request: apiFetch("/api/clientes"),
-          },
-          { name: "recebimentos", apply: (data: Recebimento[]) => active && setRecebimentosState(data), request: apiFetch("/api/recebimentos") },
-          { name: "disparos", apply: (data: Disparo[]) => active && setDisparosState(data), request: apiFetch("/api/disparos") },
-        ];
-
-        const responses = await Promise.allSettled(endpoints.map(e => e.request));
+        const responses = await Promise.allSettled(sources.map(src => src.request()));
         const failures: string[] = [];
 
         for (let i = 0; i < responses.length; i++) {
           const result = responses[i];
-          const { name, apply } = endpoints[i];
+          const source = sources[i];
+          if (!source.allow) continue;
+
           if (result.status === "fulfilled") {
             try {
               const data = await result.value.json();
-              apply(data);
+              source.setter(data);
+              writeCache(source.key, data);
             } catch (error) {
-              console.error(`[Store] Falha ao processar ${name}:`, error);
-              failures.push(name);
+              console.error(`[Store] Falha ao processar ${source.name}:`, error);
+              failures.push(source.name);
             }
           } else {
-            console.error(`[Store] Falha ao buscar ${name}:`, result.reason);
-            failures.push(name);
+            console.error(`[Store] Falha ao buscar ${source.name}:`, result.reason);
+            failures.push(source.name);
           }
         }
 
@@ -162,17 +193,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { active = false; };
-  }, [telaLimpaAtiva, telaLimpaReady]);
+  }, [telaLimpaAtiva, telaLimpaReady, addToast]);
 
   const refetchTitulos = async () => {
     if (telaLimpaAtiva) return;
     const data = await apiFetch("/api/titulos");
-    setTitulosState(await data.json());
+    const json = await data.json();
+    setTitulosState(json);
+    writeCache(CACHE_KEYS.TITULOS, json);
   };
 
   const refetchDisparos = async () => {
     const data = await apiFetch("/api/disparos");
-    setDisparosState(await data.json());
+    const json = await data.json();
+    setDisparosState(json);
+    writeCache(CACHE_KEYS.DISPAROS, json);
   };
 
   const lancarRecebimento = async (payload: {
@@ -235,7 +270,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       limparTelaLimpa();
       await Promise.all([refetchTitulos()]);
       const clis = await apiFetch("/api/clientes");
-      setClientesState(await clis.json());
+      const clientesJson = await clis.json();
+      setClientesState(clientesJson);
+      writeCache(CACHE_KEYS.CLIENTES, clientesJson);
       addToast(`Importados: ${data.clientesSalvos} clientes, ${data.titulosSalvos} títulos (${data.duplicados} duplicados ignorados) ✅`);
       return true;
     } catch {
