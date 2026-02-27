@@ -8,7 +8,16 @@ import { parseCsvText, buildCarteiraFromRows, type ParsedRow } from "@/lib/csv";
 import type { Carteira } from "@/types";
 
 export default function ImportacoesPage() {
-  const { setClientes, setTitulos, clientes, addToast, refetchTitulos } = useStore();
+  const {
+    setClientes,
+    setTitulos,
+    setDisparos,
+    setRecebimentos,
+    clientes,
+    addToast,
+    refetchTitulos,
+    limparTelaLimpa,
+  } = useStore();
   const [dragging, setDragging] = useState(false);
   const [filename, setFilename] = useState<string | null>(null);
   const [carteira, setCarteira] = useState<Carteira | null>(null);
@@ -62,10 +71,20 @@ export default function ImportacoesPage() {
 
       const result = await res.json();
 
-      // Após gravar no Atlas, recarrega dados oficiais para pegar os ObjectIds reais
-      await refetchTitulos();
-      const clientesRes = await apiFetch("/api/clientes");
+      // Após gravar no Atlas, garante que a tela não fique bloqueada por tela limpa
+      limparTelaLimpa();
+
+      // Recarrega dados oficiais para pegar ObjectIds reais e preencher títulos/lembretes/histórico/gestão
+      const [titulosRes, clientesRes, disparosRes, recebimentosRes] = await Promise.all([
+        apiFetch("/api/titulos"),
+        apiFetch("/api/clientes"),
+        apiFetch("/api/disparos"),
+        apiFetch("/api/recebimentos"),
+      ]);
+      setTitulos(await titulosRes.json());
       setClientes(await clientesRes.json());
+      setDisparos(await disparosRes.json());
+      setRecebimentos(await recebimentosRes.json());
       
       addToast(`✅ Importados para o Atlas: ${carteira.clientes.length} clientes, ${carteira.titulos.length} títulos`);
       setCarteira(null);

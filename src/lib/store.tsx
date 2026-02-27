@@ -114,16 +114,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const endpoints = [
           {
             name: "títulos",
-            apply: (data: Titulo[]) => {
-              if (!telaLimpaAtiva && active) setTitulosState(data);
-            },
+            apply: (data: Titulo[]) => { if (active) setTitulosState(data); },
             request: apiFetch("/api/titulos"),
           },
           {
             name: "clientes",
-            apply: (data: Cliente[]) => {
-              if (!telaLimpaAtiva && active) setClientesState(data);
-            },
+            apply: (data: Cliente[]) => { if (active) setClientesState(data); },
             request: apiFetch("/api/clientes"),
           },
           { name: "recebimentos", apply: (data: Recebimento[]) => active && setRecebimentosState(data), request: apiFetch("/api/recebimentos") },
@@ -165,7 +161,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [telaLimpaAtiva, telaLimpaReady]);
 
   const refetchTitulos = async () => {
-    if (telaLimpaAtiva) return;
     const data = await apiFetch("/api/titulos");
     setTitulosState(await data.json());
   };
