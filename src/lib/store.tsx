@@ -246,6 +246,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (telaLimpaAtiva) return; // Não restaura do localStorage se tela limpa estiver ativa
     try {
       const savedClientes = window.localStorage.getItem(STORAGE_CLIENTES);
       const savedTitulos = window.localStorage.getItem(STORAGE_TITULOS);
@@ -254,7 +255,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.warn("Falha ao carregar dados locais", error);
     }
-  }, []);
+  }, [telaLimpaAtiva]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
