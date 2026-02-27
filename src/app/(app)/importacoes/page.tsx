@@ -8,7 +8,7 @@ import { parseCsvText, buildCarteiraFromRows, type ParsedRow } from "@/lib/csv";
 import type { Carteira } from "@/types";
 
 export default function ImportacoesPage() {
-  const { setClientes, setTitulos, clientes, addToast } = useStore();
+  const { setClientes, setTitulos, clientes, addToast, refetchTitulos } = useStore();
   const [dragging, setDragging] = useState(false);
   const [filename, setFilename] = useState<string | null>(null);
   const [carteira, setCarteira] = useState<Carteira | null>(null);
@@ -62,9 +62,10 @@ export default function ImportacoesPage() {
 
       const result = await res.json();
 
-      // Atualizar estado local com dados do backend
-      setClientes(p => [...p, ...carteira.clientes]);
-      setTitulos(p => [...p, ...carteira.titulos]);
+      // Após gravar no Atlas, recarrega dados oficiais para pegar os ObjectIds reais
+      await refetchTitulos();
+      const clientesRes = await apiFetch("/api/clientes");
+      setClientes(await clientesRes.json());
       
       addToast(`✅ Importados para o Atlas: ${carteira.clientes.length} clientes, ${carteira.titulos.length} títulos`);
       setCarteira(null);
