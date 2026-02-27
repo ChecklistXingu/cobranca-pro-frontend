@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import type { Titulo, Cliente, Disparo } from "@/types";
 import { useStore } from "@/lib/store";
 import { brl, fmtDate } from "@/lib/utils";
@@ -27,42 +27,41 @@ export default function DashboardPage() {
   const [clientesData, setClientesData] = useState<Cliente[]>([]);
   const [disparosData, setDisparosData] = useState<Disparo[]>([]);
 
+  const carregarDados = useCallback(async () => {
+    try {
+      setCarregando(true);
+
+      const [resTitulos, resClientes, resDisparos] = await Promise.all([
+        apiFetch("/api/titulos"),
+        apiFetch("/api/clientes"),
+        apiFetch("/api/disparos"),
+      ]);
+
+      if (!resTitulos.ok || !resClientes.ok || !resDisparos.ok) {
+        throw new Error("Falha ao buscar dados");
+      }
+
+      const [titulosData, clientesData, disparosData] = await Promise.all([
+        resTitulos.json(),
+        resClientes.json(),
+        resDisparos.json(),
+      ]);
+
+      setTitulosData(titulosData);
+      setClientesData(clientesData);
+      setDisparosData(disparosData);
+    } catch (error) {
+      console.error("Erro ao carregar dados:", error);
+      addToast("Erro ao carregar dados do servidor", "error");
+    } finally {
+      setCarregando(false);
+    }
+  }, [addToast]);
+
   // Carregar dados do Atlas ao montar o componente (mesma lógica da página Títulos)
   useEffect(() => {
-    const carregarDados = async () => {
-      try {
-        setCarregando(true);
-        
-        // Buscar títulos
-        const resTitulos = await apiFetch("/api/titulos");
-        if (resTitulos.ok) {
-          const titulosData = await resTitulos.json();
-          setTitulosData(titulosData);
-        }
-
-        // Buscar clientes
-        const resClientes = await apiFetch("/api/clientes");
-        if (resClientes.ok) {
-          const clientesData = await resClientes.json();
-          setClientesData(clientesData);
-        }
-
-        // Buscar disparos
-        const resDisparos = await apiFetch("/api/disparos");
-        if (resDisparos.ok) {
-          const disparosData = await resDisparos.json();
-          setDisparosData(disparosData);
-        }
-      } catch (error) {
-        console.error("Erro ao carregar dados:", error);
-        addToast("Erro ao carregar dados do servidor", "error");
-      } finally {
-        setCarregando(false);
-      }
-    };
-
     carregarDados();
-  }, [addToast]);
+  }, [carregarDados]);
 
   const getClienteNome = useMemo(() => {
     const mapa = new Map<string, string>();
@@ -178,7 +177,26 @@ export default function DashboardPage() {
             Fim
             <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} style={{ border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13, minWidth: 160 }} />
           </label>
-          <div style={{ marginLeft: "auto", fontSize: 12, color: "#94A3B8" }}>
+          <button
+            type="button"
+            onClick={carregarDados}
+            disabled={carregando}
+            style={{
+              marginLeft: "auto",
+              background: carregando ? "#CBD5F5" : "#1D4ED8",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              padding: "10px 18px",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: carregando ? "not-allowed" : "pointer",
+              transition: "background 0.2s",
+            }}
+          >
+            {carregando ? "Atualizando..." : "Atualizar"}
+          </button>
+          <div style={{ fontSize: 12, color: "#94A3B8" }}>
             {titulosFiltrados.length} títulos no período
           </div>
         </div>
