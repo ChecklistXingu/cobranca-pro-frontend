@@ -171,12 +171,14 @@ export function buildCarteiraFromRows(rows: ParsedRow[], dataReferenciaISO: stri
           tipoImportacao = "LEMBRETE";
         } else {
           diasAtrasoCalculado = 0;
-          tipoImportacao = "LEMBRETE";
+          tipoImportacao = "TITULO";
         }
       }
 
       const numeroNF = r.numeroNF || "NF-N/D";
-      const chaveMatch = `${numeroNF}__${r.valorPrincipal.toFixed(2)}`;
+      const numeroTituloKey = nt ?? "SEM-TITULO";
+      const vencimentoKey = r.vencimento ?? "SEM-VENCIMENTO";
+      const chaveMatch = `${numeroNF}__${numeroTituloKey}__${vencimentoKey}__${r.total.toFixed(2)}`;
 
       titulos.push({
         id: simpleId("tit"),

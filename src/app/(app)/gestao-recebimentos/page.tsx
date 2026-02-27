@@ -106,11 +106,27 @@ export default function GestaoRecebimentosPage() {
   const buscarTitulosAtlas = async () => {
     setLoading(true);
     try {
-      const res = await apiFetch(`/api/titulos`);
-      if (!res.ok) throw new Error("Erro ao buscar títulos");
-      const data: Titulo[] = await res.json();
-      // Filtrar apenas títulos que tiveram disparo Z-API
-      const comDisparo = data.filter(t => t.ultimoDisparo);
+      const [titulosRes, disparosRes] = await Promise.all([
+        apiFetch(`/api/titulos`),
+        apiFetch(`/api/disparos?inicio=${dataFiltro}&fim=${dataFiltro}`),
+      ]);
+      if (!titulosRes.ok) throw new Error("Erro ao buscar títulos");
+      if (!disparosRes.ok) throw new Error("Erro ao buscar disparos");
+
+      const data: Titulo[] = await titulosRes.json();
+      const disparos: Array<{ tituloId?: string; status?: string }> = await disparosRes.json();
+      const titulosComDisparoNaData = new Set(
+        disparos
+          .filter(d => d.status === "ENVIADO" && d.tituloId)
+          .map(d => String(d.tituloId))
+      );
+
+      // Prioriza disparos do período selecionado; fallback para ultimoDisparo legado
+      const comDisparo = data.filter(t =>
+        titulosComDisparoNaData.size > 0
+          ? titulosComDisparoNaData.has(String(t.id))
+          : Boolean(t.ultimoDisparo)
+      );
       setTitulosAtlas(comDisparo);
     } catch (error) {
       console.error("Erro ao buscar títulos:", error);
