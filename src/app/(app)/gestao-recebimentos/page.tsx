@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
 import { brl, simpleId } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
-import type { Titulo } from "@/types";
+import type { Cliente, Titulo } from "@/types";
 
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { label: string; bg: string; color: string; dot: string }> = {
@@ -95,6 +95,7 @@ export default function GestaoRecebimentosPage() {
   const [tab, setTab] = useState<"PENDENTES" | "RECEBIDOS">("PENDENTES");
   const [baixarTitulo, setBaixarTitulo] = useState<Titulo | null>(null);
   const [titulosAtlas, setTitulosAtlas] = useState<Titulo[]>([]);
+  const [clientesAtlas, setClientesAtlas] = useState<Record<string, Cliente>>({});
   const [loading, setLoading] = useState(false);
   const now = new Date();
   const [dataFiltro, setDataFiltro] = useState(() => now.toISOString().split("T")[0]);
@@ -106,14 +107,17 @@ export default function GestaoRecebimentosPage() {
   const buscarTitulosAtlas = async () => {
     setLoading(true);
     try {
-      const [titulosRes, disparosRes] = await Promise.all([
+      const [titulosRes, clientesRes, disparosRes] = await Promise.all([
         apiFetch(`/api/titulos`),
+        apiFetch(`/api/clientes`),
         apiFetch(`/api/disparos?inicio=${dataFiltro}&fim=${dataFiltro}`),
       ]);
       if (!titulosRes.ok) throw new Error("Erro ao buscar títulos");
+      if (!clientesRes.ok) throw new Error("Erro ao buscar clientes");
       if (!disparosRes.ok) throw new Error("Erro ao buscar disparos");
 
       const data: Titulo[] = await titulosRes.json();
+      const clientesData: Cliente[] = await clientesRes.json();
       const disparos: Array<{ tituloId?: string; status?: string }> = await disparosRes.json();
       const titulosComDisparoNaData = new Set(
         disparos
@@ -128,6 +132,12 @@ export default function GestaoRecebimentosPage() {
           : Boolean(t.ultimoDisparo)
       );
       setTitulosAtlas(comDisparo);
+      setClientesAtlas(
+        clientesData.reduce<Record<string, Cliente>>((map, cliente) => {
+          map[String(cliente.id)] = cliente;
+          return map;
+        }, {})
+      );
     } catch (error) {
       console.error("Erro ao buscar títulos:", error);
       addToast("Erro ao carregar títulos do banco de dados", "error");
@@ -251,7 +261,7 @@ export default function GestaoRecebimentosPage() {
             </thead>
             <tbody>
               {showing.map((t, idx) => {
-                const c = getCliente(t.clienteId);
+                const c = clientesAtlas[t.clienteId] ?? getCliente(t.clienteId);
                 return (
                   <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#fff" : "#FAFBFC" }}>
                     <td style={{ padding: "11px 14px", fontWeight: 600, color: "#0F172A", whiteSpace: "nowrap" }}>{c.nome}</td>
