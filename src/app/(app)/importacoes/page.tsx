@@ -16,7 +16,7 @@ export default function ImportacoesPage() {
     clientes,
     addToast,
     refetchTitulos,
-    limparTelaLimpa,
+    setLastImportIds,
   } = useStore();
   const [dragging, setDragging] = useState(false);
   const [filename, setFilename] = useState<string | null>(null);
@@ -58,7 +58,7 @@ export default function ImportacoesPage() {
     setImportando(true);
     
     try {
-      // Enviar para MongoDB Atlas via API
+      // Enviar para Supabase via API
       const res = await apiFetch("/api/importar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -71,10 +71,12 @@ export default function ImportacoesPage() {
 
       const result = await res.json();
 
-      // Após gravar no Atlas, garante que a tela não fique bloqueada por tela limpa
-      limparTelaLimpa();
+      // Salva os IDs do lote atual — a UI de Títulos/Lembretes filtrará por eles
+      if (result.titulos_ids?.length) {
+        setLastImportIds(result.titulos_ids);
+      }
 
-      // Recarrega dados oficiais para pegar ObjectIds reais e preencher títulos/lembretes/histórico/gestão
+      // Recarrega dados oficiais para pegar IDs reais e preencher títulos/lembretes/histórico/gestão
       const [titulosRes, clientesRes, disparosRes, recebimentosRes] = await Promise.all([
         apiFetch("/api/titulos"),
         apiFetch("/api/clientes"),
@@ -85,8 +87,8 @@ export default function ImportacoesPage() {
       setClientes(await clientesRes.json());
       setDisparos(await disparosRes.json());
       setRecebimentos(await recebimentosRes.json());
-      
-      addToast(`✅ Importados para o Atlas: ${carteira.clientes.length} clientes, ${carteira.titulos.length} títulos`);
+
+      addToast(`✅ Importados: ${result.clientes_salvos ?? carteira.clientes.length} clientes, ${result.titulos_salvos ?? carteira.titulos.length} títulos`);
       setCarteira(null);
       setFilename(null);
       setRawCount(0);
@@ -103,7 +105,7 @@ export default function ImportacoesPage() {
 
   const limparDia = async () => {
     const hoje = new Date().toISOString().split("T")[0];
-    const confirma = confirm(`Tem certeza que deseja EXCLUIR todos os títulos importados hoje (${hoje}) do MongoDB Atlas?\n\nEsta ação não pode ser desfeita!`);
+    const confirma = confirm(`Tem certeza que deseja EXCLUIR todos os títulos importados hoje (${hoje}) do Supabase?\n\nEsta ação não pode ser desfeita!`);
     if (!confirma) return;
 
     setLimpando(true);
@@ -113,7 +115,7 @@ export default function ImportacoesPage() {
       });
 
       const result = await res.json();
-      addToast(`🗑️ ${result.deletedTitulos} títulos e ${result.deletedClientes} clientes excluídos do Atlas`);
+      addToast(`🗑️ ${result.deletedTitulos} títulos e ${result.deletedClientes} clientes excluídos do Supabase`);
       
       // Limpar também do localStorage
       setTitulos(() => []);
@@ -174,7 +176,7 @@ export default function ImportacoesPage() {
             cursor: limpando ? "not-allowed" : "pointer",
             whiteSpace: "nowrap"
           }}>
-          {limpando ? "Limpando..." : "🗑️ Limpar Dia (Atlas)"}
+          {limpando ? "Limpando..." : "🗑️ Limpar Dia (Supabase)"}
         </button>
       </div>
 
@@ -270,7 +272,7 @@ Agro Horizonte;+5565988880002;NF-12403;DUP-003;22000;1100;23100;30`}</pre>
                 fontSize: 14, 
                 cursor: importando ? "not-allowed" : "pointer" 
               }}>
-              {importando ? "Importando..." : "✅ Confirmar Importação (Atlas)"}
+              {importando ? "Importando..." : "✅ Confirmar Importação"}
             </button>
             <button 
               onClick={() => { setCarteira(null); setFilename(null); setRawCount(0); }} 

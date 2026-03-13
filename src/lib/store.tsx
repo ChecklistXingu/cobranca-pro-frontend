@@ -3,7 +3,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import type { Cliente, Titulo, Recebimento, Disparo, Template } from "@/types";
 import { mockTemplates } from "@/lib/mock/data";
-import { simpleId } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import { readCache, writeCache, clearCache } from "@/lib/cache";
 
@@ -23,9 +22,8 @@ interface Store {
   templates: Template[];
   setTemplates: (next: Template[] | ((prev: Template[]) => Template[])) => void;
   loading: boolean;
-  telaLimpaAtiva: boolean;
-  marcarTelaLimpa: () => void;
-  limparTelaLimpa: () => void;
+  lastImportIds: string[];
+  setLastImportIds: (ids: string[]) => void;
   refetchTitulos: () => Promise<void>;
   refetchDisparos: () => Promise<void>;
   lancarRecebimento: (payload: {
@@ -39,15 +37,15 @@ interface Store {
 }
 
 const StoreCtx = createContext<Store | null>(null);
-const STORAGE_CLIENTES = "cobranca-pro:clientes";
-const STORAGE_TITULOS = "cobranca-pro:titulos";
-const STORAGE_TELA_LIMPA = "cobranca-pro:tela-limpa";
+
 const CACHE_KEYS = {
   TITULOS: "titulos",
   CLIENTES: "clientes",
   RECEBIMENTOS: "recebimentos",
   DISPAROS: "disparos",
 } as const;
+
+const STORAGE_LAST_IMPORT_IDS = "cobranca-pro:last-import-ids";
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientesState] = useState<Cliente[]>([]);
@@ -57,11 +55,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplatesState] = useState<Template[]>(mockTemplates);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [telaLimpaAtiva, setTelaLimpaAtiva] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(STORAGE_TELA_LIMPA) === "true";
+  const [lastImportIds, setLastImportIdsState] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = window.localStorage.getItem(STORAGE_LAST_IMPORT_IDS);
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
   });
-  const [telaLimpaReady, setTelaLimpaReady] = useState<boolean>(() => typeof window === "undefined");
 
   const applySetter = useCallback(<T,>(
     setter: React.Dispatch<React.SetStateAction<T>>,
@@ -74,23 +74,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setDisparos = useCallback((next: Disparo[] | ((prev: Disparo[]) => Disparo[])) => applySetter(setDisparosState, next), [applySetter]);
   const setTemplates = useCallback((next: Template[] | ((prev: Template[]) => Template[])) => applySetter(setTemplatesState, next), [applySetter]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setTelaLimpaAtiva(window.localStorage.getItem(STORAGE_TELA_LIMPA) === "true");
-    setTelaLimpaReady(true);
-  }, []);
-
-  const marcarTelaLimpa = useCallback(() => {
-    setTelaLimpaAtiva(true);
+  const setLastImportIds = useCallback((ids: string[]) => {
+    setLastImportIdsState(ids);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(STORAGE_TELA_LIMPA, "true");
-    }
-  }, []);
-
-  const limparTelaLimpa = useCallback(() => {
-    setTelaLimpaAtiva(false);
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(STORAGE_TELA_LIMPA);
+      window.localStorage.setItem(STORAGE_LAST_IMPORT_IDS, JSON.stringify(ids));
     }
   }, []);
 
@@ -101,47 +88,70 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const titulosLembretes = useMemo(
-    () => titulos.filter(t => t.tipoImportacao === "LEMBRETE"),
-    [titulos]
+    () => {
+      const base = lastImportIds.length > 0
+        ? titulos.filter(t => lastImportIds.includes((t as any).id))
+        : titulos;
+      return base.filter(t => {
+        const tAny = t as any;
+        const tipo: string | null | undefined = tAny.tipoImportacao ?? tAny.tipo_importacao;
+        if (tipo != null) return tipo === "LEMBRETE";
+        const venc = tAny.vencimento;
+        if (!venc) return false;
+        const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        const vencDate = new Date(venc); vencDate.setHours(0, 0, 0, 0);
+        return vencDate >= hoje;
+      });
+    },
+    [titulos, lastImportIds]
   );
 
   const titulosCobranca = useMemo(
-    () => titulos.filter(t => !t.tipoImportacao || t.tipoImportacao === "TITULO"),
-    [titulos]
+    () => {
+      const base = lastImportIds.length > 0
+        ? titulos.filter(t => lastImportIds.includes((t as any).id))
+        : titulos;
+      return base.filter(t => {
+        const tAny = t as any;
+        const tipo: string | null | undefined = tAny.tipoImportacao ?? tAny.tipo_importacao;
+        if (tipo != null) return tipo === "TITULO";
+        const venc = tAny.vencimento;
+        if (!venc) return true;
+        const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        const vencDate = new Date(venc); vencDate.setHours(0, 0, 0, 0);
+        return vencDate < hoje;
+      });
+    },
+    [titulos, lastImportIds]
   );
 
   const getCliente = useCallback((id: string) => clientes.find(c => c.id === id) ?? { id, nome: "—", telefone: "—" }, [clientes]);
 
   useEffect(() => {
-    if (!telaLimpaReady) return;
     let active = true;
 
     const sources = [
       {
         name: "títulos",
         key: CACHE_KEYS.TITULOS,
-        allow: !telaLimpaAtiva,
         setter: (data: Titulo[]) => active && setTitulosState(data),
         request: () => apiFetch("/api/titulos"),
       },
       {
         name: "clientes",
         key: CACHE_KEYS.CLIENTES,
-        allow: !telaLimpaAtiva,
         setter: (data: Cliente[]) => active && setClientesState(data),
         request: () => apiFetch("/api/clientes"),
       },
       {
         name: "recebimentos",
         key: CACHE_KEYS.RECEBIMENTOS,
-        allow: true,
         setter: (data: Recebimento[]) => active && setRecebimentosState(data),
         request: () => apiFetch("/api/recebimentos"),
       },
       {
         name: "disparos",
         key: CACHE_KEYS.DISPAROS,
-        allow: true,
         setter: (data: Disparo[]) => active && setDisparosState(data),
         request: () => apiFetch("/api/disparos"),
       },
@@ -149,11 +159,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     // Carrega cache imediatamente
     sources.forEach(src => {
-      if (!src.allow) return;
       const cachedData = readCache(src.key);
-      if (cachedData) {
-        src.setter(cachedData as any);
-      }
+      if (cachedData) src.setter(cachedData as any);
     });
 
     (async () => {
@@ -164,7 +171,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         for (let i = 0; i < responses.length; i++) {
           const result = responses[i];
           const source = sources[i];
-          if (!source.allow) continue;
 
           if (result.status === "fulfilled") {
             try {
@@ -193,10 +199,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { active = false; };
-  }, [telaLimpaAtiva, telaLimpaReady, addToast]);
+  }, [addToast]);
 
   const refetchTitulos = async () => {
-    if (telaLimpaAtiva) return;
     const data = await apiFetch("/api/titulos");
     const json = await data.json();
     setTitulosState(json);
@@ -260,19 +265,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const res = await apiFetch("/api/importar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientes: clientesPayload, titulos: titulosPayload }),
+        body: JSON.stringify({
+          clientes: clientesPayload,
+          titulos: titulosPayload,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
-        addToast(data.error || "Erro na importação", "error");
+        addToast(data.error || "Erro ao importar carteira", "error");
         return false;
       }
-      limparTelaLimpa();
-      await Promise.all([refetchTitulos()]);
-      const clis = await apiFetch("/api/clientes");
-      const clientesJson = await clis.json();
-      setClientesState(clientesJson);
-      writeCache(CACHE_KEYS.CLIENTES, clientesJson);
+
+      clearCache(CACHE_KEYS.TITULOS);
+      clearCache(CACHE_KEYS.CLIENTES);
+      setTitulosState(data.titulos || []);
+      setClientesState(data.clientes || []);
+      writeCache(CACHE_KEYS.TITULOS, data.titulos || []);
+      writeCache(CACHE_KEYS.CLIENTES, data.clientes || []);
+
+      if (data.titulos_ids?.length) {
+        setLastImportIds(data.titulos_ids);
+      }
+
       addToast(`Importados: ${data.clientesSalvos} clientes, ${data.titulosSalvos} títulos (${data.duplicados} duplicados ignorados) ✅`);
       return true;
     } catch {
@@ -280,37 +294,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return false;
     }
   };
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (telaLimpaAtiva) return; // Não restaura do localStorage se tela limpa estiver ativa
-    try {
-      const savedClientes = window.localStorage.getItem(STORAGE_CLIENTES);
-      const savedTitulos = window.localStorage.getItem(STORAGE_TITULOS);
-      if (savedClientes) setClientesState(JSON.parse(savedClientes));
-      if (savedTitulos) setTitulosState(JSON.parse(savedTitulos));
-    } catch (error) {
-      console.warn("Falha ao carregar dados locais", error);
-    }
-  }, [telaLimpaAtiva]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!clientes.length) {
-      window.localStorage.removeItem(STORAGE_CLIENTES);
-      return;
-    }
-    window.localStorage.setItem(STORAGE_CLIENTES, JSON.stringify(clientes));
-  }, [clientes]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!titulos.length) {
-      window.localStorage.removeItem(STORAGE_TITULOS);
-      return;
-    }
-    window.localStorage.setItem(STORAGE_TITULOS, JSON.stringify(titulos));
-  }, [titulos]);
 
   return (
     <StoreCtx.Provider value={{
@@ -322,9 +305,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       disparos, setDisparos,
       templates, setTemplates,
       loading,
-      telaLimpaAtiva,
-      marcarTelaLimpa,
-      limparTelaLimpa,
+      lastImportIds,
+      setLastImportIds,
       refetchTitulos,
       refetchDisparos,
       lancarRecebimento,

@@ -11,12 +11,50 @@ type GrupoCliente = {
   clienteId: string;
   clienteNome: string;
   clienteTelefone?: string | null;
+  cliente_id?: string;
+  cliente_nome?: string;
+  cliente_telefone?: string | null;
   titulos: Titulo[];
   totalPrincipal: number;
   totalJuros: number;
   totalGeral: number;
   ultimoDisparo: string | null;
   maiorAtraso: number;
+};
+
+const getTituloClienteId = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.clienteId ?? tAny.cliente_id ?? "";
+};
+
+const getNumeroNF = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.numeroNF ?? tAny.numero_nf ?? "";
+};
+
+const getNumeroTitulo = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.numeroTitulo ?? tAny.numero_titulo ?? "";
+};
+
+const getValorPrincipal = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.valorPrincipal ?? tAny.valor_principal ?? 0;
+};
+
+const getDiasAtraso = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.diasAtraso ?? tAny.dias_atraso ?? 0;
+};
+
+const getUltimoDisparo = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.ultimoDisparo ?? tAny.ultimo_disparo ?? null;
+};
+
+const getTipoImportacao = (titulo: Titulo | Record<string, any>) => {
+  const tAny = titulo as Record<string, any>;
+  return tAny.tipoImportacao ?? tAny.tipo_importacao ?? "TITULO";
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -119,9 +157,6 @@ export default function TitulosPage() {
     getCliente,
     addToast,
     templates,
-    marcarTelaLimpa,
-    limparTelaLimpa,
-    telaLimpaAtiva,
   } = useStore();
   const [aba, setAba] = useState<"TITULOS" | "LEMBRETES" | "FATURADOS">("TITULOS");
   const [search, setSearch] = useState("");
@@ -133,7 +168,6 @@ export default function TitulosPage() {
   const [disparandoLote, setDisparandoLote] = useState(false);
   const [enviandoIndividual, setEnviandoIndividual] = useState(false);
   const [carregando, setCarregando] = useState(true);
-  const [limpandoTela, setLimpandoTela] = useState(false);
   const [editingTitulo, setEditingTitulo] = useState<Titulo | null>(null);
   const [editForm, setEditForm] = useState({
     numeroNF: "",
@@ -168,11 +202,6 @@ export default function TitulosPage() {
 
   // Carregar dados do Atlas ao montar o componente
   useEffect(() => {
-    if (telaLimpaAtiva) {
-      setCarregando(false);
-      return;
-    }
-
     const carregarDados = async () => {
       try {
         setCarregando(true);
@@ -199,29 +228,40 @@ export default function TitulosPage() {
     };
 
     carregarDados();
-  }, [setTitulos, setClientes, addToast, telaLimpaAtiva]);
+  }, [setTitulos, setClientes, addToast]);
 
   // Use the appropriate titles list based on the selected tab
   const currentTitulos = aba === "LEMBRETES" ? titulosLembretes : titulosCobranca;
 
   const filteredTitulos = useMemo(() => currentTitulos.filter(t => {
-    const c = getCliente(t.clienteId);
-    const matchSearch = !search || c.nome.toLowerCase().includes(search.toLowerCase()) || t.numeroNF.includes(search) || (t.numeroTitulo ?? "").includes(search);
+    const clienteIdRef = getTituloClienteId(t);
+    if (!clienteIdRef) return false;
+    const c = getCliente(clienteIdRef);
+    const numeroNF = getNumeroNF(t);
+    const numeroTitulo = getNumeroTitulo(t);
+    const diasAtraso = getDiasAtraso(t);
+    const matchSearch =
+      !search ||
+      c.nome.toLowerCase().includes(search.toLowerCase()) ||
+      numeroNF.includes(search) ||
+      numeroTitulo.includes(search);
     const matchStatus = filterStatus === "TODOS" || t.status === filterStatus;
-    const matchFaixa = filterFaixa === "TODAS" || (
-      filterFaixa === "0-7" ? t.diasAtraso > 0 && t.diasAtraso <= 7 :
-      filterFaixa === "8-15" ? t.diasAtraso >= 8 && t.diasAtraso <= 15 :
-      filterFaixa === "16-30" ? t.diasAtraso >= 16 && t.diasAtraso <= 30 :
-      filterFaixa === "30+" ? t.diasAtraso > 30 : true
-    );
+    const matchFaixa =
+      filterFaixa === "TODAS" ||
+      (filterFaixa === "0-7" ? diasAtraso > 0 && diasAtraso <= 7 :
+        filterFaixa === "8-15" ? diasAtraso >= 8 && diasAtraso <= 15 :
+          filterFaixa === "16-30" ? diasAtraso >= 16 && diasAtraso <= 30 :
+            filterFaixa === "30+" ? diasAtraso > 30 : true);
     return matchSearch && matchStatus && matchFaixa;
   }), [currentTitulos, search, filterStatus, filterFaixa, getCliente]);
 
   const gruposPorCliente = useMemo<GrupoCliente[]>(() => {
-    const agrupado = new Map<string, Titulo[]>();
+    const agrupado = new Map<string, (Titulo | Record<string, any>)[]>();
     filteredTitulos.forEach(titulo => {
-      const atuais = agrupado.get(titulo.clienteId) ?? [];
-      agrupado.set(titulo.clienteId, [...atuais, titulo]);
+      const clienteIdRef = getTituloClienteId(titulo);
+      if (!clienteIdRef) return;
+      const atuais = agrupado.get(clienteIdRef) ?? [];
+      agrupado.set(clienteIdRef, [...atuais, titulo]);
     });
 
     return Array.from(agrupado.entries()).map(([clienteId, lista]) => {
@@ -230,24 +270,28 @@ export default function TitulosPage() {
         if (a.vencimento && b.vencimento) {
           return new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime();
         }
-        return a.numeroNF.localeCompare(b.numeroNF);
+        return getNumeroNF(a).localeCompare(getNumeroNF(b));
       });
 
-      const totalPrincipal = ordenados.reduce((sum, t) => sum + t.valorPrincipal, 0);
-      const totalJuros = ordenados.reduce((sum, t) => sum + t.juros, 0);
-      const totalGeral = ordenados.reduce((sum, t) => sum + t.total, 0);
+      const totalPrincipal = ordenados.reduce((sum, t) => sum + getValorPrincipal(t), 0);
+      const totalJuros = ordenados.reduce((sum, t) => sum + (t.juros ?? 0), 0);
+      const totalGeral = ordenados.reduce((sum, t) => sum + (t.total ?? 0), 0);
       const ultimoDisparo = ordenados.reduce<string | null>((latest, t) => {
-        if (!t.ultimoDisparo) return latest;
-        if (!latest) return t.ultimoDisparo;
-        return new Date(t.ultimoDisparo) > new Date(latest) ? t.ultimoDisparo : latest;
+        const atual = getUltimoDisparo(t);
+        if (!atual) return latest;
+        if (!latest) return atual;
+        return new Date(atual) > new Date(latest) ? atual : latest;
       }, null);
-      const maiorAtraso = ordenados.reduce((max, t) => Math.max(max, t.diasAtraso ?? 0), 0);
+      const maiorAtraso = ordenados.reduce((max, t) => Math.max(max, getDiasAtraso(t)), 0);
 
       return {
         clienteId,
+        cliente_id: clienteId,
         clienteNome: cliente.nome,
+        cliente_nome: cliente.nome,
         clienteTelefone: cliente.telefone,
-        titulos: ordenados,
+        cliente_telefone: cliente.telefone,
+        titulos: ordenados as Titulo[],
         totalPrincipal,
         totalJuros,
         totalGeral,
@@ -274,7 +318,6 @@ export default function TitulosPage() {
 
   const sincronizarTitulos = async () => {
     try {
-      limparTelaLimpa();
       const res = await apiFetch("/api/titulos");
       if (!res.ok) throw new Error("Não foi possível atualizar os títulos");
       const titulosApi: Titulo[] = await res.json();
@@ -287,7 +330,6 @@ export default function TitulosPage() {
 
   const sincronizarClientes = async () => {
     try {
-      limparTelaLimpa();
       const res = await apiFetch("/api/clientes");
       if (!res.ok) throw new Error("Não foi possível atualizar os clientes");
       const clientesApi = await res.json();
@@ -303,18 +345,18 @@ export default function TitulosPage() {
       titulo.vencimento ? new Date(titulo.vencimento).toISOString().split("T")[0] : "";
     setEditingTitulo(titulo);
     setEditForm({
-      numeroNF: titulo.numeroNF,
-      numeroTitulo: titulo.numeroTitulo ?? "",
-      valorPrincipal: String(titulo.valorPrincipal ?? 0),
+      numeroNF: getNumeroNF(titulo),
+      numeroTitulo: getNumeroTitulo(titulo),
+      valorPrincipal: String(getValorPrincipal(titulo) ?? 0),
       juros: String(titulo.juros ?? 0),
       vencimento: vencimentoInput,
       status: titulo.status,
     });
     if (grupoDetalhe) {
-      setEditingClienteId(grupoDetalhe.clienteId);
+      setEditingClienteId(grupoDetalhe.clienteId ?? grupoDetalhe.cliente_id ?? null);
       setEditClienteForm({
-        nome: grupoDetalhe.clienteNome,
-        telefone: grupoDetalhe.clienteTelefone ?? "",
+        nome: grupoDetalhe.clienteNome ?? (grupoDetalhe as any).cliente_nome ?? "",
+        telefone: grupoDetalhe.clienteTelefone ?? (grupoDetalhe as any).cliente_telefone ?? "",
       });
     }
   };
@@ -363,15 +405,15 @@ export default function TitulosPage() {
       })();
 
       const payloadTitulo = {
-        numeroNF: editForm.numeroNF.trim(),
-        numeroTitulo: editForm.numeroTitulo.trim() || undefined,
-        valorPrincipal,
+        numero_nf: editForm.numeroNF.trim(),
+        numero_titulo: editForm.numeroTitulo.trim() || null,
+        valor_principal: valorPrincipal,
         juros,
         total,
-        diasAtraso,
+        dias_atraso: diasAtraso,
         vencimento: editForm.vencimento
           ? new Date(editForm.vencimento).toISOString()
-          : undefined,
+          : null,
         status: editForm.status,
       };
 
@@ -426,6 +468,31 @@ export default function TitulosPage() {
 
     setEnviandoIndividual(true);
     try {
+      const clienteId =
+        disparoCliente.clienteId ??
+        (disparoCliente as any).cliente_id ??
+        tituloBase.clienteId ??
+        (tituloBase as any).cliente_id;
+
+      if (!clienteId) {
+        addToast("Cliente sem identificação para disparo", "error");
+        return;
+      }
+
+      const mensagemEnviada = buildMensagemCobranca(
+        disparoCliente.titulos.map(t => ({
+          numeroNF: getNumeroNF(t),
+          numeroTitulo: getNumeroTitulo(t) || undefined,
+          vencimento: t.vencimento,
+          valorPrincipal: getValorPrincipal(t),
+          juros: t.juros ?? 0,
+          total: t.total ?? getValorPrincipal(t),
+          diasAtraso: getDiasAtraso(t),
+        })),
+        disparoCliente.clienteNome ?? (disparoCliente as any).cliente_nome ?? "Cliente",
+        templatePadrao
+      );
+
       const anexosPayload =
         anexos.length > 0
           ? await Promise.all(
@@ -445,9 +512,11 @@ export default function TitulosPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tituloId: tituloBase.id,
-          chaveMatch: tituloBase.chaveMatch,
+          cliente_id: clienteId,
+          titulo_id: tituloBase.id,
           template: templatePadrao,
+          mensagem_enviada: mensagemEnviada,
+          tipo: "COBRANCA_ATRASO",
           anexos: anexosPayload,
         }),
       });
@@ -486,13 +555,40 @@ export default function TitulosPage() {
       const tituloBase = grupo.titulos[0];
       if (!tituloBase) continue;
       try {
+        const clienteId =
+          grupo.clienteId ??
+          (grupo as any).cliente_id ??
+          tituloBase.clienteId ??
+          (tituloBase as any).cliente_id;
+
+        if (!clienteId) {
+          falhas++;
+          continue;
+        }
+
+        const mensagemEnviada = buildMensagemCobranca(
+          grupo.titulos.map(t => ({
+            numeroNF: getNumeroNF(t),
+            numeroTitulo: getNumeroTitulo(t) || undefined,
+            vencimento: t.vencimento,
+            valorPrincipal: getValorPrincipal(t),
+            juros: t.juros ?? 0,
+            total: t.total ?? getValorPrincipal(t),
+            diasAtraso: getDiasAtraso(t),
+          })),
+          grupo.clienteNome ?? (grupo as any).cliente_nome ?? "Cliente",
+          templateSelecionado
+        );
+
         const res = await apiFetch("/api/disparos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            tituloId: tituloBase.id,
-            chaveMatch: tituloBase.chaveMatch,
+            cliente_id: clienteId,
+            titulo_id: tituloBase.id,
             template: templateSelecionado,
+            mensagem_enviada: mensagemEnviada,
+            tipo: "COBRANCA_ATRASO",
           }),
         });
         const data = await res.json();
@@ -510,25 +606,6 @@ export default function TitulosPage() {
     addToast(`Lote: ${sucesso} enviados, ${falhas} falhas${falhas ? " ⚠️" : " ✅"}`);
     await sincronizarTitulos();
     setDisparandoLote(false);
-  };
-
-  const limparTela = async () => {
-    if (!titulos.length) {
-      addToast("Não há dados para limpar.", "info");
-      return;
-    }
-
-    const confirma = confirm(
-      "Limpar a tela irá ocultar os títulos atuais até a próxima importação. Deseja continuar?"
-    );
-    if (!confirma) return;
-
-    setLimpandoTela(true);
-    setTitulos(() => []);
-    setClientes(() => []);
-    marcarTelaLimpa();
-    addToast("Tela limpa. Importe um novo arquivo para preencher novamente.");
-    setLimpandoTela(false);
   };
 
   const fecharDisparoModal = () => {
@@ -915,36 +992,6 @@ Equipe Financeira`}
           <option value="16-30">16–30 dias</option>
           <option value="30+">30+ dias</option>
         </select>
-        <button
-          onClick={limparTela}
-          disabled={limpandoTela}
-          style={{
-            border: "1px solid #FCA5A5",
-            borderRadius: 10,
-            background: limpandoTela ? "#FECACA" : "#FFF1F2",
-            color: limpandoTela ? "#f87171" : "#B91C1C",
-            padding: "8px 14px",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: limpandoTela ? "not-allowed" : "pointer",
-            opacity: limpandoTela ? 0.7 : 1,
-            whiteSpace: "nowrap",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {limpandoTela ? (
-            <>
-              <span className="animate-pulse">⏳</span>
-              Limpando...
-            </>
-          ) : (
-            <>
-              🧹 Limpar tela
-            </>
-          )}
-        </button>
       </div>
 
       {/* TABLE */}
@@ -977,16 +1024,16 @@ Equipe Financeira`}
                 const statusPrioridade = ["VENCIDO", "NEGOCIADO", "ABERTO", "RECEBIDO", "CANCELADO"];
                 const statusPrincipal = statusPrioridade.find(status => grupo.titulos.some(t => t.status === status)) ?? grupo.titulos[0]?.status ?? "ABERTO";
                 return (
-                  <tr key={grupo.clienteId} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#fff" : "#FAFBFC" }}>
-                    <td style={{ padding: "11px 14px", fontWeight: 700, color: "#0F172A", minWidth: 160 }}>{grupo.clienteNome}</td>
-                    <td style={{ padding: "11px 14px", color: "#64748B", whiteSpace: "nowrap" }}>{grupo.clienteTelefone ?? "—"}</td>
+                  <tr key={grupo.clienteId || (grupo as any).cliente_id} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                    <td style={{ padding: "11px 14px", fontWeight: 700, color: "#0F172A", minWidth: 160 }}>{grupo.clienteNome ?? (grupo as any).cliente_nome ?? "—"}</td>
+                    <td style={{ padding: "11px 14px", color: "#64748B", whiteSpace: "nowrap" }}>{grupo.clienteTelefone ?? (grupo as any).cliente_telefone ?? "—"}</td>
                     <td style={{ padding: "11px 14px", color: "#334155" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {grupo.titulos.map((titulo, index) => (
                           <div key={titulo.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 12 }}>
                             <span style={{ fontWeight: 600, color: "#1D4ED8", fontFamily: "monospace" }}>{index + 1}) {titulo.numeroNF}</span>
                             <span>Venc.: {fmtDate(titulo.vencimento)}</span>
-                            <span>Valor: {brl(titulo.valorPrincipal)}</span>
+                            <span>Valor: {brl(getValorPrincipal(titulo))}</span>
                             <span>Juros: {brl(titulo.juros)}</span>
                             <span>Total: {brl(titulo.total)}</span>
                             <span>Atraso: {titulo.diasAtraso > 0 ? `${titulo.diasAtraso}d` : "—"}</span>
@@ -1032,7 +1079,7 @@ Equipe Financeira`}
       )}
 
       {/* DETAIL MODAL */}
-      <Modal open={!!grupoDetalhe} onClose={() => setGrupoDetalhe(null)} title={grupoDetalhe ? `Detalhes - ${grupoDetalhe.clienteNome}` : ""} width={560}>
+      <Modal open={!!grupoDetalhe} onClose={() => setGrupoDetalhe(null)} title={grupoDetalhe ? `Detalhes - ${grupoDetalhe.clienteNome ?? (grupoDetalhe as any).cliente_nome ?? ""}` : ""} width={560}>
         {grupoDetalhe && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ background: "#F8FAFC", borderRadius: 10, padding: 12, fontSize: 13, color: "#475569" }}>
@@ -1044,7 +1091,7 @@ Equipe Financeira`}
                     style={{ ...inputStyle, maxWidth: 260, fontWeight: 700, color: "#0F172A" }}
                   />
                 ) : (
-                  <div style={{ fontWeight: 700, color: "#0F172A" }}>{grupoDetalhe.clienteNome}</div>
+                  <div style={{ fontWeight: 700, color: "#0F172A" }}>{grupoDetalhe.clienteNome ?? (grupoDetalhe as any).cliente_nome ?? "—"}</div>
                 )}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1058,7 +1105,7 @@ Equipe Financeira`}
                       style={{ ...inputStyle, maxWidth: 220, display: "inline-block" }}
                     />
                   ) : (
-                    <span>{grupoDetalhe.clienteTelefone ?? "—"}</span>
+                    <span>{grupoDetalhe.clienteTelefone ?? (grupoDetalhe as any).cliente_telefone ?? "—"}</span>
                   )}
                 </div>
                 <div>
@@ -1215,7 +1262,7 @@ Equipe Financeira`}
                             Vencimento: <strong>{fmtDate(titulo.vencimento)}</strong>
                           </span>
                           <span>
-                            Valor: <strong>{brl(titulo.valorPrincipal)}</strong>
+                            Valor: <strong>{brl(getValorPrincipal(titulo))}</strong>
                           </span>
                           <span>
                             Juros: <strong>{brl(titulo.juros)}</strong>
@@ -1320,22 +1367,22 @@ Equipe Financeira`}
       </Modal>
 
       {/* DISPARO MODAL */}
-      <Modal open={!!disparoCliente} onClose={fecharDisparoModal} title={disparoCliente ? `Simular Disparo - ${disparoCliente.clienteNome}` : "Simular Disparo WhatsApp"} width={520}>
+      <Modal open={!!disparoCliente} onClose={fecharDisparoModal} title={disparoCliente ? `Simular Disparo - ${disparoCliente.clienteNome ?? (disparoCliente as any).cliente_nome ?? ""}` : "Simular Disparo WhatsApp"} width={520}>
         {disparoCliente && (() => {
           const mensagemPreview = buildMensagemCobranca(
             disparoCliente.titulos.map(t => ({
-              numeroNF: t.numeroNF,
-              numeroTitulo: t.numeroTitulo,
+              numeroNF: getNumeroNF(t),
+              numeroTitulo: getNumeroTitulo(t) || undefined,
               vencimento: t.vencimento,
-              valorPrincipal: t.valorPrincipal,
-              juros: t.juros,
-              total: t.total,
-              diasAtraso: t.diasAtraso,
+              valorPrincipal: getValorPrincipal(t),
+              juros: t.juros ?? 0,
+              total: t.total ?? getValorPrincipal(t),
+              diasAtraso: getDiasAtraso(t),
             })),
-            disparoCliente.clienteNome,
+            disparoCliente.clienteNome ?? (disparoCliente as any).cliente_nome ?? "",
             templatePadrao
           );
-          const telefone = disparoCliente.clienteTelefone ?? "—";
+          const telefone = disparoCliente.clienteTelefone ?? (disparoCliente as any).cliente_telefone ?? "—";
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div
