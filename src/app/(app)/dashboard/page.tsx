@@ -18,50 +18,16 @@ const parseLocalDate = (value: string | null) => {
 };
 
 export default function DashboardPage() {
-  const { addToast } = useStore();
+  const { addToast, titulos, clientes, disparos } = useStore();
   const now = new Date();
   const [dataInicio, setDataInicio] = useState(() => formatInputDate(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [dataFim, setDataFim] = useState(() => formatInputDate(now));
-  const [carregando, setCarregando] = useState(true);
-  const [titulosData, setTitulosData] = useState<Titulo[]>([]);
-  const [clientesData, setClientesData] = useState<Cliente[]>([]);
-  const [disparosData, setDisparosData] = useState<Disparo[]>([]);
+  const [carregando, setCarregando] = useState(false);
 
-  const carregarDados = useCallback(async () => {
-    try {
-      setCarregando(true);
-
-      const [resTitulos, resClientes, resDisparos] = await Promise.all([
-        apiFetch("/api/titulos"),
-        apiFetch("/api/clientes"),
-        apiFetch("/api/disparos"),
-      ]);
-
-      if (!resTitulos.ok || !resClientes.ok || !resDisparos.ok) {
-        throw new Error("Falha ao buscar dados");
-      }
-
-      const [titulosData, clientesData, disparosData] = await Promise.all([
-        resTitulos.json(),
-        resClientes.json(),
-        resDisparos.json(),
-      ]);
-
-      setTitulosData(titulosData);
-      setClientesData(clientesData);
-      setDisparosData(disparosData);
-    } catch (error) {
-      console.error("Erro ao carregar dados:", error);
-      addToast("Erro ao carregar dados do servidor", "error");
-    } finally {
-      setCarregando(false);
-    }
-  }, [addToast]);
-
-  // Carregar dados do Atlas ao montar o componente (mesma lógica da página Títulos)
-  useEffect(() => {
-    carregarDados();
-  }, [carregarDados]);
+  // Usa dados do store em vez de buscar das APIs
+  const titulosData = titulos;
+  const clientesData = clientes;
+  const disparosData = disparos;
 
   const getClienteNome = useMemo(() => {
     const mapa = new Map<string, string>();
@@ -179,22 +145,22 @@ export default function DashboardPage() {
           </label>
           <button
             type="button"
-            onClick={carregarDados}
-            disabled={carregando}
+            onClick={() => setCarregando(!carregando)}
+            disabled={false}
             style={{
               marginLeft: "auto",
-              background: carregando ? "#CBD5F5" : "#1D4ED8",
+              background: "#1D4ED8",
               color: "#fff",
               border: "none",
               borderRadius: 8,
               padding: "10px 18px",
               fontSize: 12,
               fontWeight: 600,
-              cursor: carregando ? "not-allowed" : "pointer",
+              cursor: "pointer",
               transition: "background 0.2s",
             }}
           >
-            {carregando ? "Atualizando..." : "Atualizar"}
+            Atualizar
           </button>
           <div style={{ fontSize: 12, color: "#94A3B8" }}>
             {titulosFiltrados.length} títulos no período

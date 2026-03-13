@@ -164,14 +164,13 @@ export function buildCarteiraFromRows(rows: ParsedRow[], dataReferenciaISO: stri
         const diffMs = referencia.getTime() - vencimentoDate.getTime();
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
         if (diffDays > 0) {
+          // Vencido: referencia > vencimento
           diasAtrasoCalculado = diffDays;
           tipoImportacao = "TITULO";
-        } else if (diffDays === 0) {
+        } else {
+          // Vence hoje (diffDays === 0) ou no futuro (diffDays < 0) → lembrete
           diasAtrasoCalculado = 0;
           tipoImportacao = "LEMBRETE";
-        } else {
-          diasAtrasoCalculado = 0;
-          tipoImportacao = "TITULO";
         }
       }
 
