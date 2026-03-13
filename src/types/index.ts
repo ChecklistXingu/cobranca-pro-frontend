@@ -2,11 +2,24 @@ export type TituloStatus = "ABERTO" | "VENCIDO" | "RECEBIDO" | "NEGOCIADO" | "CA
 export type FormaRecebimento = "PIX" | "DINHEIRO" | "BOLETO" | "TRANSFERENCIA" | "OUTRO";
 export type DisparoStatus = "ENVIADO" | "FALHOU" | "PENDENTE";
 
+export type TipoCliente = "PRODUTOR_RURAL" | "REVENDEDOR" | "DISTRIBUIDOR" | "OUTROS";
+
 export interface Cliente {
   id: string;
   nome: string;
   telefone?: string;
   documento?: string;
+  email?: string;
+  tipo_cliente?: TipoCliente;
+  cep?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  observacoes?: string;
+  ativo?: boolean;
 }
 
 export type TipoImportacao = "TITULO" | "LEMBRETE";

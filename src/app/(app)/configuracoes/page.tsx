@@ -48,7 +48,7 @@ export default function ConfiguracoesPage() {
       </div>
 
       <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", borderRadius: 12, padding: "14px 18px", marginBottom: 24, fontSize: 13, color: "#92400E" }}>
-        <strong>ℹ️ Próximos passos:</strong> Backend Node.js + MongoDB Atlas + Render para persistência dos dados. A Z-API será integrada via POST /send-message com o token e instância configurados acima.
+        <strong>ℹ️ Próximos passos:</strong> Backend Next.js + Supabase + Render para persistência dos dados. A Z-API será integrada via POST /send-message com o token e instância configurados acima.
       </div>
 
       <button onClick={() => addToast("Configurações salvas!")} style={{ background: "#1E40AF", color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>

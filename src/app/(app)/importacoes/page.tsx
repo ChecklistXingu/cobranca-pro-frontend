@@ -192,7 +192,7 @@ export default function ImportacoesPage() {
           {filename ? filename : "Arraste o CSV aqui ou clique para selecionar"}
         </div>
         <div style={{ fontSize: 13, color: "#94A3B8" }}>
-          Colunas: nome, telefone, numero_nf, numero_titulo, valor_principal, juros, total, dias_atraso
+          Colunas: nome, cpf_cnpj (opcional), telefone, numero_nf, numero_titulo, valor_principal, juros, total, dias_atraso
         </div>
         <input ref={fileRef} type="file" accept=".csv" onChange={e => processFile(e.target.files?.[0] ?? null)} style={{ display: "none" }} />
       </div>
@@ -200,10 +200,10 @@ export default function ImportacoesPage() {
       {/* FORMAT HINT */}
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #E2E8F0", padding: "16px 20px", marginBottom: 20 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: "#334155", marginBottom: 8 }}>📋 Formato esperado do CSV</div>
-        <pre style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", background: "#F8FAFC", borderRadius: 8, padding: "10px 14px", margin: 0, overflowX: "auto" }}>{`nome;telefone;numero_nf;numero_titulo;valor_principal;juros;total;dias_atraso
-Fazenda São João;+5565999990001;NF-12401;DUP-001;15000;750;15750;12
-Fazenda São João;+5565999990001;NF-12402;DUP-002;8200;0;8200;0
-Agro Horizonte;+5565988880002;NF-12403;DUP-003;22000;1100;23100;30`}</pre>
+        <pre style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", background: "#F8FAFC", borderRadius: 8, padding: "10px 14px", margin: 0, overflowX: "auto" }}>{`nome;cpf_cnpj;telefone;numero_nf;numero_titulo;valor_principal;juros;total;dias_atraso
+Fazenda São João;12345678000199;+5565999990001;NF-12401;DUP-001;15000;750;15750;12
+Fazenda São João;12345678000199;+5565999990001;NF-12402;DUP-002;8200;0;8200;0
+Agro Horizonte;98765432000100;+5565988880002;NF-12403;DUP-003;22000;1100;23100;30`}</pre>
       </div>
 
       {/* PREVIEW */}

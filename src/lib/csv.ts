@@ -70,6 +70,7 @@ function pick(row: Record<string, string>, candidates: string[]): string {
 export interface ParsedRow {
   nome: string;
   telefone?: string;
+  documento?: string; // CPF ou CNPJ (somente dígitos)
   numeroNF?: string;
   numeroTitulo?: string;
   vencimento?: string;
@@ -96,6 +97,7 @@ export function parseCsvText(csvText: string): ParsedRow[] {
   return rows.map(r => {
     const nome = pick(r, ["nome", "cliente", "razao social", "razão social"]);
     const telefone = pick(r, ["telefone", "celular", "whatsapp"]);
+    const documentoRaw = pick(r, ["cpf", "cnpj", "cpf/cnpj", "cpf_cnpj", "documento", "doc"]);
     const numeroNF = pick(r, ["numero_nf", "numero nf", "número nf", "nf", "nota fiscal"]);
     const numeroTitulo = pick(r, ["numero_titulo", "numero do titulo", "número do título", "titulo", "duplicata"]);
     const vencimentoRaw = pick(r, ["vencimento", "data_vencimento", "data vencimento", "dt_vencimento", "dt vencimento"]);
@@ -126,6 +128,7 @@ export function parseCsvText(csvText: string): ParsedRow[] {
     return {
       nome: norm(nome),
       telefone: telefone || undefined,
+      documento: digitsOnly(documentoRaw) || undefined,
       numeroNF: norm(numeroNF) || undefined,
       numeroTitulo: norm(numeroTitulo) || undefined,
       vencimento,
@@ -144,9 +147,12 @@ export function buildCarteiraFromRows(rows: ParsedRow[], dataReferenciaISO: stri
   referencia.setHours(0, 0, 0, 0);
 
   for (const r of rows) {
-    const clienteKey = `${normKey(r.nome)}__${digitsOnly(r.telefone ?? "")}`;
+    // Se tem CPF/CNPJ, usa como chave única (mais preciso); senão usa nome+telefone
+    const clienteKey = r.documento
+      ? `doc__${r.documento}`
+      : `${normKey(r.nome)}__${digitsOnly(r.telefone ?? "")}`;
     const cliente: Cliente = clientesMap.get(clienteKey) ?? (() => {
-      const c: Cliente = { id: simpleId("cli"), nome: r.nome, telefone: r.telefone };
+      const c: Cliente = { id: simpleId("cli"), nome: r.nome, telefone: r.telefone, documento: r.documento };
       clientesMap.set(clienteKey, c);
       return c;
     })();

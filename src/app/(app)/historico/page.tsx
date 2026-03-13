@@ -83,7 +83,7 @@ export default function HistoricoPage() {
     <div>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Histórico</h1>
-        <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Consulte os disparos realizados em qualquer período direto do Atlas.</p>
+        <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Consulte os disparos realizados em qualquer período direto do Supabase.</p>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", border: "1px solid #E2E8F0", marginBottom: 20 }}>

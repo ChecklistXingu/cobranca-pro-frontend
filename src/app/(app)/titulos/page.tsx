@@ -200,7 +200,7 @@ export default function TitulosPage() {
   const templateLembrete = templates.find(t => t.nome === "1º Aviso")?.nome ?? templateVencido;
   const templatePadrao = aba === "LEMBRETES" ? templateLembrete : templateVencido;
 
-  // Carregar dados do Atlas ao montar o componente
+  // Carregar dados do Supabase ao montar o componente
   useEffect(() => {
     const carregarDados = async () => {
       try {

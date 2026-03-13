@@ -156,7 +156,7 @@ export default function GestaoRecebimentosPage() {
     const novoStatus = (!data.parcial && parseFloat(data.valorRecebido) >= baixarTitulo.total) ? "RECEBIDO" as const : baixarTitulo.status;
     
     try {
-      // Atualizar no MongoDB via API
+      // Atualizar no Supabase via API
       const res = await apiFetch(`/api/titulos/${baixarTitulo.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -189,7 +189,7 @@ export default function GestaoRecebimentosPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: "#0F172A", margin: 0 }}>Gestão de Recebimentos</h1>
-            <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Títulos com disparo Z-API do MongoDB Atlas</p>
+            <p style={{ color: "#64748B", fontSize: 13, marginTop: 2 }}>Títulos com disparo Z-API do Supabase</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>
