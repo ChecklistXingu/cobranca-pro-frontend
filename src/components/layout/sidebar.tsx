@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useUser } from "@/hooks/useUser";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> },
@@ -17,6 +18,29 @@ const nav = [
 
 export default function Sidebar({ open }: { open: boolean }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useUser();
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/login");
+  };
+
+  const getUserInitials = () => {
+    if (!user?.email) return "FA";
+    const email = user.email;
+    return email.substring(0, 2).toUpperCase();
+  };
+
+  const getUserName = () => {
+    if (!user?.email) return "Força Agrícola";
+    return user.email.split("@")[0];
+  };
+
+  const getUserEmail = () => {
+    if (!user?.email) return "forcaagricola.sistemas@gmail.com";
+    return user.email;
+  };
 
   return (
     <aside style={{ width: open ? 240 : 0, minHeight: "100vh", background: "#0F172A", transition: "width 0.25s", overflow: "hidden", flexShrink: 0, display: "flex", flexDirection: "column" }}>
@@ -54,12 +78,52 @@ export default function Sidebar({ open }: { open: boolean }) {
       {/* USER */}
       <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#10B981,#047857)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>FA</div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ color: "#E2E8F0", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Força Agrícola</div>
-            <div style={{ color: "#475569", fontSize: 10, whiteSpace: "nowrap" }}>forcaagricola.sistemas@gmail.com</div>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#10B981,#047857)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+            {getUserInitials()}
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: "#E2E8F0", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {getUserName()}
+            </div>
+            <div style={{ color: "#475569", fontSize: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {getUserEmail()}
+            </div>
           </div>
         </div>
+        
+        {/* Botão Logout */}
+        <button
+          onClick={handleLogout}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            width: "100%",
+            padding: "8px 12px",
+            marginTop: "12px",
+            borderRadius: 6,
+            background: "rgba(239, 68, 68, 0.1)",
+            color: "#F87171",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: "pointer",
+            transition: "all 0.15s"
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)";
+            e.currentTarget.style.color = "#EF4444";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
+            e.currentTarget.style.color = "#F87171";
+          }}
+        >
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+          Sair
+        </button>
       </div>
     </aside>
   );

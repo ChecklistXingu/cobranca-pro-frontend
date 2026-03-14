@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useUser } from "@/hooks/useUser";
 
 interface TopbarProps {
   onToggleSidebar: () => void;
@@ -10,6 +11,12 @@ interface TopbarProps {
 
 export default function Topbar({ onToggleSidebar, onNovoTitulo }: TopbarProps) {
   const [search, setSearch] = useState("");
+  const { user } = useUser();
+
+  const getUserName = () => {
+    if (!user?.email) return "Visitante";
+    return user.email.split("@")[0];
+  };
 
   return (
     <header style={{ background: "#fff", borderBottom: "1px solid #E2E8F0", padding: "0 24px", height: 60, display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 100, flexShrink: 0 }}>
@@ -23,6 +30,21 @@ export default function Topbar({ onToggleSidebar, onNovoTitulo }: TopbarProps) {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      {/* User Info */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 12px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
+            {getUserName()}
+          </div>
+          <div style={{ fontSize: 10, color: "#64748B" }}>
+            Online
+          </div>
+        </div>
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#1E40AF)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700 }}>
+          {user?.email ? user.email.substring(0, 2).toUpperCase() : "V"}
+        </div>
+      </div>
 
       {onNovoTitulo ? (
         <button
