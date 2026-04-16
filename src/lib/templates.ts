@@ -60,12 +60,17 @@ export function buildMensagemCobranca(
     })
     .join("\n\n");
 
+  const qtd = titulos.length;
+  const pluralSingular = qtd === 1
+    ? `que existe *1 título* em atraso no seu cadastro:`
+    : `que existem *${qtd} títulos* em atraso no seu cadastro:`;
+
   return [
-    `Olá, ${clienteNome}! Tudo bem?`,
-    templateConfig.assunto,
-    templateConfig.corpo,
+    `Olá, ${clienteNome}! Tudo bem? Aqui é o financeiro da Força Agrícola informamos:`,
+    pluralSingular,
     listaTitulos,
     `Total em aberto: *${currency.format(totalGeral)}*`,
+    templateConfig.corpo,
     templateConfig.rodape ?? "",
   ]
     .filter(Boolean)
