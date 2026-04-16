@@ -26,6 +26,7 @@ export default function ImportacoesPage() {
   const [limpando, setLimpando] = useState(false);
   const [dataReferencia, setDataReferencia] = useState(() => new Date().toISOString().split("T")[0]);
   const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
+  const [showAllClientes, setShowAllClientes] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const processFile = async (file: File | null) => {
@@ -226,7 +227,7 @@ Agro Horizonte;98765432000100;+5565988880002;NF-12403;DUP-003;22000;1100;23100;3
           <div style={{ background: "#fff", borderRadius: 14, border: "1px solid #E2E8F0", padding: "20px 24px", marginBottom: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: "#0F172A", marginBottom: 16 }}>Prévia — Clientes e Títulos</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {carteira.clientes.slice(0, 8).map(c => {
+              {carteira.clientes.slice(0, showAllClientes ? undefined : 8).map(c => {
                 const tits = carteira.titulos.filter(t => t.clienteId === c.id);
                 const soma = tits.reduce((a, t) => a + t.total, 0);
                 return (
@@ -254,7 +255,22 @@ Agro Horizonte;98765432000100;+5565988880002;NF-12403;DUP-003;22000;1100;23100;3
                   </div>
                 );
               })}
-              {carteira.clientes.length > 8 && <div style={{ fontSize: 12, color: "#94A3B8" }}>+ {carteira.clientes.length - 8} cliente(s) a mais...</div>}
+              {!showAllClientes && carteira.clientes.length > 8 && (
+                <div
+                  onClick={() => setShowAllClientes(true)}
+                  style={{ fontSize: 12, color: "#3B82F6", cursor: "pointer", fontWeight: 600, padding: "6px 0", userSelect: "none" }}
+                >
+                  + {carteira.clientes.length - 8} cliente(s) a mais — clique para ver todos
+                </div>
+              )}
+              {showAllClientes && carteira.clientes.length > 8 && (
+                <div
+                  onClick={() => setShowAllClientes(false)}
+                  style={{ fontSize: 12, color: "#94A3B8", cursor: "pointer", fontWeight: 600, padding: "6px 0", userSelect: "none" }}
+                >
+                  ▲ Ver menos
+                </div>
+              )}
             </div>
           </div>
 
