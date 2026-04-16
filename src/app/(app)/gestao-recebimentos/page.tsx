@@ -118,17 +118,17 @@ export default function GestaoRecebimentosPage() {
 
       const data: Titulo[] = await titulosRes.json();
       const clientesData: Cliente[] = await clientesRes.json();
-      const disparos: Array<{ tituloId?: string; status?: string }> = await disparosRes.json();
-      const titulosComDisparoNaData = new Set(
+      const disparos: Array<{ clienteId?: string; tituloId?: string; status?: string }> = await disparosRes.json();
+      const clientesComDisparoNaData = new Set(
         disparos
-          .filter(d => d.status === "ENVIADO" && d.tituloId)
-          .map(d => String(d.tituloId))
+          .filter(d => d.status === "ENVIADO" && d.clienteId)
+          .map(d => String(d.clienteId))
       );
 
-      // Prioriza disparos do período selecionado; fallback para ultimoDisparo legado
+      // Mostra todos os títulos dos clientes que tiveram disparo na data selecionada
       const comDisparo = data.filter(t =>
-        titulosComDisparoNaData.size > 0
-          ? titulosComDisparoNaData.has(String(t.id))
+        clientesComDisparoNaData.size > 0
+          ? clientesComDisparoNaData.has(String(t.clienteId))
           : Boolean(t.ultimoDisparo)
       );
       setTitulosAtlas(comDisparo);
