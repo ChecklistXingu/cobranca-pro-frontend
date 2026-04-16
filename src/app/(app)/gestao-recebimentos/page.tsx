@@ -2,15 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { useStore } from "@/lib/store";
-import { brl, simpleId } from "@/lib/utils";
+import { brl } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import type { Cliente, Titulo } from "@/types";
 
+type RecebimentoInfo = {
+  id: string;
+  valorRecebido: number;
+  data: string;
+  forma: string;
+  observacao: string;
+  parcial: boolean;
+};
+
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { label: string; bg: string; color: string; dot: string }> = {
-    ABERTO: { label: "Aberto", bg: "#DBEAFE", color: "#1D4ED8", dot: "#3B82F6" },
-    VENCIDO: { label: "Vencido", bg: "#FEE2E2", color: "#B91C1C", dot: "#EF4444" },
-    RECEBIDO: { label: "Recebido", bg: "#D1FAE5", color: "#065F46", dot: "#10B981" },
+    ABERTO:    { label: "Aberto",    bg: "#DBEAFE", color: "#1D4ED8", dot: "#3B82F6" },
+    VENCIDO:   { label: "Vencido",   bg: "#FEE2E2", color: "#B91C1C", dot: "#EF4444" },
+    RECEBIDO:  { label: "Recebido",  bg: "#D1FAE5", color: "#065F46", dot: "#10B981" },
     NEGOCIADO: { label: "Negociado", bg: "#EDE9FE", color: "#5B21B6", dot: "#8B5CF6" },
     CANCELADO: { label: "Cancelado", bg: "#F3F4F6", color: "#374151", dot: "#9CA3AF" },
   };
@@ -23,7 +32,11 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const inputStyle: React.CSSProperties = { width: "100%", border: "1px solid #E2E8F0", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#334155", outline: "none", background: "#fff", boxSizing: "border-box" };
+const inputStyle: React.CSSProperties = {
+  width: "100%", border: "1px solid #E2E8F0", borderRadius: 8,
+  padding: "9px 12px", fontSize: 13, color: "#334155", outline: "none",
+  background: "#fff", boxSizing: "border-box",
+};
 
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -34,20 +47,36 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
-function BaixarModal({ open, titulo, onClose, onConfirm }: {
+function BaixarModal({ open, titulo, onClose, onConfirm, initialValues, modoEdicao }: {
   open: boolean;
   titulo: Titulo | null;
   onClose: () => void;
   onConfirm: (data: { valorRecebido: string; data: string; forma: string; observacao: string; parcial: boolean }) => void;
+  initialValues?: Partial<RecebimentoInfo>;
+  modoEdicao?: boolean;
 }) {
-  const [form, setForm] = useState({ valorRecebido: "", data: new Date().toISOString().split("T")[0], forma: "PIX", observacao: "", parcial: false });
+  const hoje = new Date().toISOString().split("T")[0];
+  const defaultForm = { valorRecebido: "", data: hoje, forma: "PIX", observacao: "", parcial: false };
+  const [form, setForm] = useState(defaultForm);
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        valorRecebido: initialValues?.valorRecebido ? String(initialValues.valorRecebido) : "",
+        data: initialValues?.data ? initialValues.data.split("T")[0] : hoje,
+        forma: initialValues?.forma ?? "PIX",
+        observacao: initialValues?.observacao ?? "",
+        parcial: initialValues?.parcial ?? false,
+      });
+    }
+  }, [open]);
+
   if (!open || !titulo) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.valorRecebido) return;
     onConfirm(form);
-    setForm({ valorRecebido: "", data: new Date().toISOString().split("T")[0], forma: "PIX", observacao: "", parcial: false });
   };
 
   return (
@@ -55,7 +84,9 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: {
       <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }} onClick={onClose} />
       <div style={{ position: "relative", background: "#fff", borderRadius: 16, boxShadow: "0 25px 50px rgba(0,0,0,0.18)", width: 480, maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto", padding: 28 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div style={{ fontSize: 17, fontWeight: 700, color: "#0F172A" }}>Lançar Recebimento</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#0F172A" }}>
+            {modoEdicao ? "Editar Recebimento" : "Lançar Recebimento"}
+          </div>
           <button onClick={onClose} style={{ background: "#F1F5F9", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: "#64748B" }}>✕</button>
         </div>
         <div style={{ marginBottom: 14, background: "#F8FAFC", borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
@@ -81,8 +112,8 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: {
             <input type="checkbox" checked={form.parcial} onChange={e => setForm(p => ({ ...p, parcial: e.target.checked }))} />
             Recebimento parcial (manter como VENCIDO)
           </label>
-          <button type="submit" style={{ background: "#1E40AF", color: "#fff", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-            Confirmar Recebimento
+          <button type="submit" style={{ background: modoEdicao ? "#065F46" : "#1E40AF", color: "#fff", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+            {modoEdicao ? "Salvar Alteração" : "Confirmar Recebimento"}
           </button>
         </form>
       </div>
@@ -91,11 +122,13 @@ function BaixarModal({ open, titulo, onClose, onConfirm }: {
 }
 
 export default function GestaoRecebimentosPage() {
-  const { getCliente, recebimentos, setRecebimentos, addToast } = useStore();
+  const { getCliente, setRecebimentos, addToast } = useStore();
   const [tab, setTab] = useState<"PENDENTES" | "RECEBIDOS">("PENDENTES");
   const [baixarTitulo, setBaixarTitulo] = useState<Titulo | null>(null);
+  const [editarTitulo, setEditarTitulo] = useState<Titulo | null>(null);
   const [titulosAtlas, setTitulosAtlas] = useState<Titulo[]>([]);
   const [clientesAtlas, setClientesAtlas] = useState<Record<string, Cliente>>({});
+  const [recebimentosPorTitulo, setRecebimentosPorTitulo] = useState<Record<string, RecebimentoInfo>>({});
   const [loading, setLoading] = useState(false);
   const now = new Date();
   const [dataFiltro, setDataFiltro] = useState(() => now.toISOString().split("T")[0]);
@@ -107,10 +140,11 @@ export default function GestaoRecebimentosPage() {
   const buscarTitulosAtlas = async () => {
     setLoading(true);
     try {
-      const [titulosRes, clientesRes, disparosRes] = await Promise.all([
+      const [titulosRes, clientesRes, disparosRes, recebimentosRes] = await Promise.all([
         apiFetch(`/api/titulos`),
         apiFetch(`/api/clientes`),
         apiFetch(`/api/disparos?inicio=${dataFiltro}&fim=${dataFiltro}`),
+        apiFetch(`/api/recebimentos`),
       ]);
       if (!titulosRes.ok) throw new Error("Erro ao buscar títulos");
       if (!clientesRes.ok) throw new Error("Erro ao buscar clientes");
@@ -119,13 +153,31 @@ export default function GestaoRecebimentosPage() {
       const data: Titulo[] = await titulosRes.json();
       const clientesData: Cliente[] = await clientesRes.json();
       const disparos: Array<{ clienteId?: string; tituloId?: string; status?: string }> = await disparosRes.json();
+      const recebimentosData: Array<{ id: string; tituloId: string; valorRecebido: number; data: string; forma: string; observacao: string }> = recebimentosRes.ok ? await recebimentosRes.json() : [];
+
+      // Mapa titulo_id → recebimento para preencher modal de edição
+      const recMap: Record<string, RecebimentoInfo> = {};
+      for (const r of recebimentosData) {
+        if (r.tituloId) {
+          recMap[String(r.tituloId)] = {
+            id: r.id,
+            valorRecebido: r.valorRecebido,
+            data: r.data,
+            forma: r.forma,
+            observacao: r.observacao || "",
+            parcial: false,
+          };
+        }
+      }
+      setRecebimentosPorTitulo(recMap);
+      setRecebimentos(recebimentosData as any);
+
       const clientesComDisparoNaData = new Set(
         disparos
           .filter(d => d.status === "ENVIADO" && d.clienteId)
           .map(d => String(d.clienteId))
       );
 
-      // Mostra todos os títulos dos clientes que tiveram disparo na data selecionada
       const comDisparo = data.filter(t =>
         clientesComDisparoNaData.size > 0
           ? clientesComDisparoNaData.has(String(t.clienteId))
@@ -149,32 +201,46 @@ export default function GestaoRecebimentosPage() {
 
   const pendentes = titulosAtlas.filter(t => t.status !== "RECEBIDO" && t.status !== "CANCELADO");
   const recebidosList = titulosAtlas.filter(t => t.status === "RECEBIDO");
-  const showing = tab === "PENDENTES" ? pendentes : recebidosList;
 
-  const handleBaixar = async (data: { valorRecebido: string; data: string; forma: string; observacao: string; parcial: boolean }) => {
+  // Pendentes mostra todos (pendentes + recebidos na mesma lista) para manter visibilidade da baixa
+  const showing = tab === "PENDENTES" ? titulosAtlas : recebidosList;
+
+  const handleBaixar = async (formData: { valorRecebido: string; data: string; forma: string; observacao: string; parcial: boolean }) => {
     if (!baixarTitulo) return;
-    const novoStatus = (!data.parcial && parseFloat(data.valorRecebido) >= baixarTitulo.total) ? "RECEBIDO" as const : baixarTitulo.status;
-    
     try {
-      // Atualizar no Supabase via API
-      const res = await apiFetch(`/api/titulos/${baixarTitulo.id}`, {
-        method: "PATCH",
+      const res = await apiFetch("/api/recebimentos", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: novoStatus }),
+        body: JSON.stringify({
+          titulo_id: baixarTitulo.id,
+          valor_recebido: parseFloat(formData.valorRecebido),
+          forma: formData.forma,
+          data: formData.data,
+          observacao: formData.observacao,
+          parcial: formData.parcial,
+        }),
       });
-      
-      if (!res.ok) throw new Error("Erro ao atualizar título");
-      
-      // Atualizar localmente
+
+      if (!res.ok) throw new Error("Erro ao lançar recebimento");
+      const recebimento = await res.json();
+
+      const novoStatus = (!formData.parcial && parseFloat(formData.valorRecebido) >= baixarTitulo.total)
+        ? "RECEBIDO" as const
+        : baixarTitulo.status;
+
       setTitulosAtlas(prev => prev.map(t => t.id === baixarTitulo.id ? { ...t, status: novoStatus } : t));
-      setRecebimentos(prev => [...prev, {
-        id: simpleId("r"),
-        tituloId: baixarTitulo.id,
-        data: data.data,
-        valorRecebido: parseFloat(data.valorRecebido),
-        forma: data.forma as "PIX",
-        observacao: data.observacao,
-      }]);
+      setRecebimentosPorTitulo(prev => ({
+        ...prev,
+        [String(baixarTitulo.id)]: {
+          id: recebimento.id,
+          valorRecebido: parseFloat(formData.valorRecebido),
+          data: formData.data,
+          forma: formData.forma,
+          observacao: formData.observacao,
+          parcial: formData.parcial,
+        },
+      }));
+
       addToast(novoStatus === "RECEBIDO" ? "Título baixado como RECEBIDO! ✅" : "Recebimento parcial lançado.");
       setBaixarTitulo(null);
     } catch (error) {
@@ -182,6 +248,54 @@ export default function GestaoRecebimentosPage() {
       addToast("Erro ao processar recebimento", "error");
     }
   };
+
+  const handleEditarBaixa = async (formData: { valorRecebido: string; data: string; forma: string; observacao: string; parcial: boolean }) => {
+    if (!editarTitulo) return;
+    const recAtual = recebimentosPorTitulo[String(editarTitulo.id)];
+    if (!recAtual) return;
+
+    try {
+      const res = await apiFetch(`/api/recebimentos/${recAtual.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo_id: editarTitulo.id,
+          valor_recebido: parseFloat(formData.valorRecebido),
+          forma: formData.forma,
+          data: formData.data,
+          observacao: formData.observacao,
+          parcial: formData.parcial,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Erro ao editar recebimento");
+
+      const novoStatus = (!formData.parcial && parseFloat(formData.valorRecebido) >= editarTitulo.total)
+        ? "RECEBIDO" as const
+        : "VENCIDO" as const;
+
+      setTitulosAtlas(prev => prev.map(t => t.id === editarTitulo.id ? { ...t, status: novoStatus } : t));
+      setRecebimentosPorTitulo(prev => ({
+        ...prev,
+        [String(editarTitulo.id)]: {
+          ...prev[String(editarTitulo.id)],
+          valorRecebido: parseFloat(formData.valorRecebido),
+          data: formData.data,
+          forma: formData.forma,
+          observacao: formData.observacao,
+          parcial: formData.parcial,
+        },
+      }));
+
+      addToast("Recebimento atualizado! ✅");
+      setEditarTitulo(null);
+    } catch (error) {
+      console.error("Erro ao editar baixa:", error);
+      addToast("Erro ao editar recebimento", "error");
+    }
+  };
+
+  const totalRecebimentos = Object.values(recebimentosPorTitulo).reduce((a, r) => a + r.valorRecebido, 0);
 
   return (
     <div>
@@ -194,26 +308,17 @@ export default function GestaoRecebimentosPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#475569" }}>
               Data do Disparo:
-              <input 
-                type="date" 
-                value={dataFiltro} 
-                onChange={e => setDataFiltro(e.target.value)} 
-                style={{ marginLeft: 8, border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13 }} 
+              <input
+                type="date"
+                value={dataFiltro}
+                onChange={e => setDataFiltro(e.target.value)}
+                style={{ marginLeft: 8, border: "1px solid #E2E8F0", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}
               />
             </label>
-            <button 
-              onClick={buscarTitulosAtlas} 
+            <button
+              onClick={buscarTitulosAtlas}
               disabled={loading}
-              style={{ 
-                background: loading ? "#94A3B8" : "#3B82F6", 
-                color: "#fff", 
-                border: "none", 
-                borderRadius: 8, 
-                padding: "8px 16px", 
-                fontSize: 13, 
-                fontWeight: 600, 
-                cursor: loading ? "not-allowed" : "pointer" 
-              }}>
+              style={{ background: loading ? "#94A3B8" : "#3B82F6", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600, cursor: loading ? "not-allowed" : "pointer" }}>
               {loading ? "Carregando..." : "🔄 Atualizar"}
             </button>
           </div>
@@ -234,8 +339,8 @@ export default function GestaoRecebimentosPage() {
         </div>
         <div style={{ background: "#fff", borderRadius: 14, padding: "16px 20px", border: "1px solid #E2E8F0" }}>
           <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Recebimentos lançados</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#1D4ED8" }}>{recebimentos.length}</div>
-          <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{brl(recebimentos.reduce((a, r) => a + r.valorRecebido, 0))}</div>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#1D4ED8" }}>{Object.keys(recebimentosPorTitulo).length}</div>
+          <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{brl(totalRecebimentos)}</div>
         </div>
       </div>
 
@@ -262,8 +367,16 @@ export default function GestaoRecebimentosPage() {
             <tbody>
               {showing.map((t, idx) => {
                 const c = clientesAtlas[t.clienteId] ?? getCliente(t.clienteId);
+                const isRecebido = t.status === "RECEBIDO";
                 return (
-                  <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                  <tr
+                    key={t.id}
+                    style={{
+                      borderBottom: "1px solid #F1F5F9",
+                      background: isRecebido ? "#F0FDF4" : (idx % 2 === 0 ? "#fff" : "#FAFBFC"),
+                      opacity: isRecebido ? 0.65 : 1,
+                    }}
+                  >
                     <td style={{ padding: "11px 14px", fontWeight: 600, color: "#0F172A", whiteSpace: "nowrap" }}>{c.nome}</td>
                     <td style={{ padding: "11px 14px", fontFamily: "monospace", color: "#1D4ED8", fontSize: 12 }}>{t.numeroNF}</td>
                     <td style={{ padding: "11px 14px" }}>{brl(t.valorPrincipal)}</td>
@@ -272,8 +385,16 @@ export default function GestaoRecebimentosPage() {
                     <td style={{ padding: "11px 14px" }}>{t.diasAtraso > 0 ? <span style={{ color: "#B91C1C", fontWeight: 600 }}>{t.diasAtraso}d</span> : "—"}</td>
                     <td style={{ padding: "11px 14px" }}><StatusBadge status={t.status} /></td>
                     <td style={{ padding: "11px 14px" }}>
-                      {tab === "PENDENTES" && (
-                        <button onClick={() => setBaixarTitulo(t)} style={{ background: "#EDE9FE", color: "#5B21B6", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      {isRecebido ? (
+                        <button
+                          onClick={() => setEditarTitulo(t)}
+                          style={{ background: "#E2E8F0", color: "#334155", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          ✏️ Editar Baixa
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setBaixarTitulo(t)}
+                          style={{ background: "#EDE9FE", color: "#5B21B6", border: "none", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           Lançar Recebimento
                         </button>
                       )}
@@ -287,7 +408,23 @@ export default function GestaoRecebimentosPage() {
         {showing.length === 0 && <div style={{ padding: 40, textAlign: "center", color: "#94A3B8" }}>Nenhum título nesta categoria</div>}
       </div>
 
-      <BaixarModal open={!!baixarTitulo} titulo={baixarTitulo} onClose={() => setBaixarTitulo(null)} onConfirm={handleBaixar} />
+      {/* Modal lançar baixa */}
+      <BaixarModal
+        open={!!baixarTitulo}
+        titulo={baixarTitulo}
+        onClose={() => setBaixarTitulo(null)}
+        onConfirm={handleBaixar}
+      />
+
+      {/* Modal editar baixa */}
+      <BaixarModal
+        open={!!editarTitulo}
+        titulo={editarTitulo}
+        onClose={() => setEditarTitulo(null)}
+        onConfirm={handleEditarBaixa}
+        initialValues={editarTitulo ? recebimentosPorTitulo[String(editarTitulo.id)] : undefined}
+        modoEdicao
+      />
     </div>
   );
 }
