@@ -618,13 +618,27 @@ export default function TitulosPage() {
       f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!files.length) {
-      setAnexos([]);
       return;
     }
-    if (files.length > 5) {
-      addToast("Você pode anexar no máximo 5 PDFs.", "error");
-    }
-    setAnexos(files.slice(0, 5));
+    setAnexos(prev => {
+      const merged = [...prev];
+      for (const file of files) {
+        const exists = merged.some(
+          existing =>
+            existing.name === file.name &&
+            existing.size === file.size &&
+            existing.lastModified === file.lastModified
+        );
+        if (!exists && merged.length < 5) {
+          merged.push(file);
+        }
+      }
+      if (prev.length + files.length > 5 || merged.length === 5) {
+        addToast("Você pode anexar no máximo 5 PDFs.", "error");
+      }
+      return merged.slice(0, 5);
+    });
+    e.target.value = "";
   };
 
   const fileToBase64 = (file: File) => {
@@ -650,13 +664,27 @@ export default function TitulosPage() {
       f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
     );
     if (!files.length) {
-      setFatAnexos([]);
       return;
     }
-    if (files.length > 5) {
-      addToast("Você pode anexar no máximo 5 PDFs.", "error");
-    }
-    setFatAnexos(files.slice(0, 5));
+    setFatAnexos(prev => {
+      const merged = [...prev];
+      for (const file of files) {
+        const exists = merged.some(
+          existing =>
+            existing.name === file.name &&
+            existing.size === file.size &&
+            existing.lastModified === file.lastModified
+        );
+        if (!exists && merged.length < 5) {
+          merged.push(file);
+        }
+      }
+      if (prev.length + files.length > 5 || merged.length === 5) {
+        addToast("Você pode anexar no máximo 5 PDFs.", "error");
+      }
+      return merged.slice(0, 5);
+    });
+    e.target.value = "";
   };
 
   const enviarFaturamento = async (e: React.FormEvent) => {
