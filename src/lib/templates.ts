@@ -27,8 +27,8 @@ const templates: Record<MensagemTemplateNome, { assunto: string; corpo: string; 
   },
   "Vencido": {
     assunto: "Título em atraso",
-    corpo: "Consta em nosso sistema um ou mais títulos em aberto. Poderia verificar, por gentileza?",
-    rodape: "Se já efetuou o pagamento, por favor desconsidere e nos encaminhe o comprovante.",
+    corpo: "Poderia verificar esses títulos, por gentileza? Estamos à disposição para resolver da melhor forma.",
+    rodape: "Caso já tenha efetuado algum pagamento, por favor nos encaminhe o comprovante. 🙏",
   },
   "2º Aviso": {
     assunto: "Segundo aviso de cobrança",
@@ -52,24 +52,28 @@ export function buildMensagemCobranca(
   const totalGeral = titulos.reduce((acc, item) => acc + Number(item.total ?? 0), 0);
   const listaTitulos = titulos
     .map((titulo, index) => {
-      const atraso = titulo.diasAtraso && titulo.diasAtraso > 0 ? `${titulo.diasAtraso} dias` : "Em dia";
-      return `*${index + 1}) NF ${titulo.numeroNF}*
+      const atraso = titulo.diasAtraso && titulo.diasAtraso > 0
+        ? `${titulo.diasAtraso} dias em atraso`
+        : "Em dia";
+      return `*${index + 1}) ${titulo.numeroNF}*
 • Vencimento: ${formatDate(titulo.vencimento)}
-• Valor: ${currency.format(titulo.total)}
+• Valor: ${currency.format(titulo.valorPrincipal)}
+• Juros: ${currency.format(titulo.juros)}
+• Total: ${currency.format(titulo.total)}
 • Situação: ${atraso}`;
     })
     .join("\n\n");
 
   const qtd = titulos.length;
   const pluralSingular = qtd === 1
-    ? `que existe *1 título* em atraso no seu cadastro:`
-    : `que existem *${qtd} títulos* em atraso no seu cadastro:`;
+    ? `Aqui é o financeiro da Força Agrícola. Identificamos que existe *1 título* em atraso no seu cadastro:`
+    : `Aqui é o financeiro da Força Agrícola. Identificamos que existem *${qtd} títulos* em atraso no seu cadastro:`;
 
   return [
-    `Olá, ${clienteNome}! Tudo bem? Aqui é o financeiro da Força Agrícola informamos:`,
+    `Olá, ${clienteNome}! Tudo bem?`,
     pluralSingular,
     listaTitulos,
-    `Total em aberto: *${currency.format(totalGeral)}*`,
+    `*Total em aberto: ${currency.format(totalGeral)}*`,
     templateConfig.corpo,
     templateConfig.rodape ?? "",
   ]
