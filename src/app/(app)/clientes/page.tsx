@@ -251,6 +251,36 @@ function ClienteFormModal({ open, onClose, inicial, onSave }: {
   );
 }
 
+// ─── Paginação ───────────────────────────────────────────────────────────────
+
+const PER_PAGE = 5;
+
+function Paginador({ total, pagina, onChange }: { total: number; pagina: number; onChange: (p: number) => void }) {
+  const totalPaginas = Math.ceil(total / PER_PAGE);
+  if (totalPaginas <= 1) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 12, borderTop: "1px solid #F1F5F9" }}>
+      <span style={{ fontSize: 12, color: "#94A3B8" }}>
+        Página {pagina} de {totalPaginas} — {total} registro{total !== 1 ? "s" : ""}
+      </span>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => onChange(pagina - 1)}
+          disabled={pagina === 1}
+          style={{ padding: "5px 12px", fontSize: 12, fontWeight: 600, border: "1px solid #E2E8F0", borderRadius: 7, background: pagina === 1 ? "#F8FAFC" : "#fff", color: pagina === 1 ? "#CBD5E1" : "#334155", cursor: pagina === 1 ? "not-allowed" : "pointer" }}>
+          ← Anterior
+        </button>
+        <button
+          onClick={() => onChange(pagina + 1)}
+          disabled={pagina === totalPaginas}
+          style={{ padding: "5px 12px", fontSize: 12, fontWeight: 600, border: "1px solid #E2E8F0", borderRadius: 7, background: pagina === totalPaginas ? "#F8FAFC" : "#fff", color: pagina === totalPaginas ? "#CBD5E1" : "#334155", cursor: pagina === totalPaginas ? "not-allowed" : "pointer" }}>
+          Próximo →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Perfil do cliente ────────────────────────────────────────────────────────
 
 type PerfilData = Cliente & {
@@ -276,11 +306,26 @@ function InfoItem({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionCard({ title, children, expanded, onToggle }: {
+  title: string; children: React.ReactNode; expanded: boolean; onToggle: () => void;
+}) {
   return (
-    <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #E2E8F0", padding: "18px 20px", marginBottom: 14 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>{title}</div>
-      {children}
+    <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #E2E8F0", marginBottom: 14, overflow: "hidden" }}>
+      <button
+        onClick={onToggle}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.5 }}>{title}</span>
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth={2.5}
+          style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {expanded && (
+        <div style={{ padding: "0 20px 18px" }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }
@@ -291,6 +336,12 @@ function PerfilCliente({ clienteId, onBack, onEdit }: {
   const [perfil, setPerfil] = useState<PerfilData | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmInativar, setConfirmInativar] = useState(false);
+  const [pagTitulos, setPagTitulos] = useState(1);
+  const [pagRecebimentos, setPagRecebimentos] = useState(1);
+  const [pagDisparos, setPagDisparos] = useState(1);
+  const [expandTitulos, setExpandTitulos] = useState(false);
+  const [expandRecebimentos, setExpandRecebimentos] = useState(false);
+  const [expandDisparos, setExpandDisparos] = useState(false);
   const { addToast, setClientes } = useStore();
 
   const load = useCallback(async () => {
@@ -406,7 +457,7 @@ function PerfilCliente({ clienteId, onBack, onEdit }: {
       </div>
 
       {/* Dados cadastrais — sempre visível */}
-      <SectionCard title="Dados Cadastrais">
+      <SectionCard title="Dados Cadastrais" expanded={true} onToggle={() => {}}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14 }}>
           <InfoItem label="Telefone / WhatsApp" value={perfil.telefone} />
           <InfoItem label="CPF / CNPJ" value={perfil.documento} />
@@ -428,84 +479,106 @@ function PerfilCliente({ clienteId, onBack, onEdit }: {
       </SectionCard>
 
       {/* Títulos vinculados */}
-      <SectionCard title={`Títulos vinculados (${perfil.titulos?.length ?? 0})`}>
+      <SectionCard title={`Títulos vinculados (${perfil.titulos?.length ?? 0})`} expanded={expandTitulos} onToggle={() => { setExpandTitulos(p => !p); setPagTitulos(1); }}>
         {(perfil.titulos?.length ?? 0) === 0 ? (
           <p style={{ color: "#94A3B8", fontSize: 13, margin: 0 }}>Nenhum título vinculado.</p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
-                  {["NF", "Valor", "Status", "Vencimento"].map(h => (
-                    <th key={h} style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "6px 10px", textAlign: "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {perfil.titulos!.map((t, i) => (
-                  <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
-                    <td style={{ color: "#1D4ED8", fontFamily: "monospace", fontSize: 12, padding: "8px 10px", fontWeight: 600 }}>{t.numeroNF}</td>
-                    <td style={{ color: "#0F172A", fontSize: 13, fontWeight: 600, padding: "8px 10px" }}>{brl(t.total)}</td>
-                    <td style={{ padding: "8px 10px" }}><TituloStatusBadge status={t.status} /></td>
-                    <td style={{ color: "#64748B", fontSize: 12, padding: "8px 10px" }}>{t.vencimento ? fmtDate(t.vencimento) : "—"}</td>
+        ) : (() => {
+          const total = perfil.titulos!.length;
+          const pagina = pagTitulos;
+          const itens = perfil.titulos!.slice((pagina - 1) * PER_PAGE, pagina * PER_PAGE);
+          return (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                    {["NF", "Valor", "Status", "Vencimento"].map(h => (
+                      <th key={h} style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "6px 10px", textAlign: "left" }}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {itens.map((t, i) => (
+                    <tr key={t.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                      <td style={{ color: "#1D4ED8", fontFamily: "monospace", fontSize: 12, padding: "8px 10px", fontWeight: 600 }}>{t.numeroNF}</td>
+                      <td style={{ color: "#0F172A", fontSize: 13, fontWeight: 600, padding: "8px 10px" }}>{brl(t.total)}</td>
+                      <td style={{ padding: "8px 10px" }}><TituloStatusBadge status={t.status} /></td>
+                      <td style={{ color: "#64748B", fontSize: 12, padding: "8px 10px" }}>{t.vencimento ? fmtDate(t.vencimento) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Paginador total={total} pagina={pagina} onChange={setPagTitulos} />
+            </div>
+          );
+        })()}
       </SectionCard>
 
       {/* Recebimentos */}
       {(perfil.recebimentos?.length ?? 0) > 0 && (
-        <SectionCard title={`Histórico de recebimentos (${perfil.recebimentos!.length})`}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
-                  {["Data", "Valor", "Forma", "Observação"].map(h => (
-                    <th key={h} style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "6px 10px", textAlign: "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {perfil.recebimentos!.map((r, i) => (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
-                    <td style={{ color: "#334155", fontSize: 13, padding: "8px 10px" }}>{fmtDate(r.data)}</td>
-                    <td style={{ color: "#065F46", fontSize: 13, fontWeight: 700, padding: "8px 10px" }}>{brl(r.valorRecebido)}</td>
-                    <td style={{ color: "#334155", fontSize: 12, padding: "8px 10px" }}>{r.forma}</td>
-                    <td style={{ color: "#64748B", fontSize: 12, padding: "8px 10px" }}>{r.observacao || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <SectionCard title={`Histórico de recebimentos (${perfil.recebimentos!.length})`} expanded={expandRecebimentos} onToggle={() => { setExpandRecebimentos(p => !p); setPagRecebimentos(1); }}>
+          {(() => {
+            const total = perfil.recebimentos!.length;
+            const pagina = pagRecebimentos;
+            const itens = perfil.recebimentos!.slice((pagina - 1) * PER_PAGE, pagina * PER_PAGE);
+            return (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                      {["Data", "Valor", "Forma", "Observação"].map(h => (
+                        <th key={h} style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "6px 10px", textAlign: "left" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itens.map((r, i) => (
+                      <tr key={r.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                        <td style={{ color: "#334155", fontSize: 13, padding: "8px 10px" }}>{fmtDate(r.data)}</td>
+                        <td style={{ color: "#065F46", fontSize: 13, fontWeight: 700, padding: "8px 10px" }}>{brl(r.valorRecebido)}</td>
+                        <td style={{ color: "#334155", fontSize: 12, padding: "8px 10px" }}>{r.forma}</td>
+                        <td style={{ color: "#64748B", fontSize: 12, padding: "8px 10px" }}>{r.observacao || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Paginador total={total} pagina={pagina} onChange={setPagRecebimentos} />
+              </div>
+            );
+          })()}
         </SectionCard>
       )}
 
       {/* Disparos */}
       {(perfil.disparos?.length ?? 0) > 0 && (
-        <SectionCard title={`Disparos (${perfil.disparos!.length})`}>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
-                  {["Data", "Template", "Status"].map(h => (
-                    <th key={h} style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "6px 10px", textAlign: "left" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {perfil.disparos!.map((d, i) => (
-                  <tr key={d.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
-                    <td style={{ color: "#64748B", fontSize: 12, padding: "8px 10px" }}>{fmtDate(d.createdAt)}</td>
-                    <td style={{ color: "#334155", fontSize: 13, padding: "8px 10px" }}>{d.template}</td>
-                    <td style={{ padding: "8px 10px" }}><DisparoStatusBadge status={d.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <SectionCard title={`Disparos (${perfil.disparos!.length})`} expanded={expandDisparos} onToggle={() => { setExpandDisparos(p => !p); setPagDisparos(1); }}>
+          {(() => {
+            const total = perfil.disparos!.length;
+            const pagina = pagDisparos;
+            const itens = perfil.disparos!.slice((pagina - 1) * PER_PAGE, pagina * PER_PAGE);
+            return (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #E2E8F0" }}>
+                      {["Data", "Template", "Status"].map(h => (
+                        <th key={h} style={{ color: "#475569", fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "6px 10px", textAlign: "left" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {itens.map((d, i) => (
+                      <tr key={d.id} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#fff" : "#FAFBFC" }}>
+                        <td style={{ color: "#64748B", fontSize: 12, padding: "8px 10px" }}>{fmtDate(d.createdAt)}</td>
+                        <td style={{ color: "#334155", fontSize: 13, padding: "8px 10px" }}>{d.template}</td>
+                        <td style={{ padding: "8px 10px" }}><DisparoStatusBadge status={d.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Paginador total={total} pagina={pagina} onChange={setPagDisparos} />
+              </div>
+            );
+          })()}
         </SectionCard>
       )}
 
