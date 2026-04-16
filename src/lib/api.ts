@@ -1,11 +1,8 @@
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
-
-console.log("[API] NEXT_PUBLIC_API_URL:", process.env.NEXT_PUBLIC_API_URL);
-console.log("[API] BASE_URL:", BASE_URL);
+const API_SECRET_KEY = process.env.NEXT_PUBLIC_API_SECRET_KEY ?? "";
 
 function ensureBaseUrl() {
   if (!BASE_URL) {
-    console.error("[API] NEXT_PUBLIC_API_URL não configurada!");
     throw new Error("NEXT_PUBLIC_API_URL não configurada");
   }
 }
@@ -22,21 +19,23 @@ export function apiUrl(path: string): string {
 
 export async function apiFetch(input: string, init?: RequestInit) {
   const url = apiUrl(input);
-  console.log(`[API] ${init?.method || 'GET'} ${url}`);
-  
+
+  // Injeta x-api-key em todas as requisições ao backend
+  const headers = new Headers(init?.headers);
+  if (API_SECRET_KEY) {
+    headers.set("x-api-key", API_SECRET_KEY);
+  }
+
   try {
-    const res = await fetch(url, init);
-    
+    const res = await fetch(url, { ...init, headers });
+
     if (!res.ok) {
       const errorText = await res.text();
-      console.error(`[API] Error ${res.status} on ${init?.method || 'GET'} ${url}:`, errorText);
       throw new Error(`HTTP ${res.status}: ${errorText}`);
     }
-    
-    console.log(`[API] Success ${res.status} on ${init?.method || 'GET'} ${url}`);
+
     return res;
   } catch (error) {
-    console.error(`[API] Network error on ${init?.method || 'GET'} ${url}:`, error);
     throw error;
   }
 }
