@@ -633,7 +633,9 @@ export default function TitulosPage() {
       reader.onload = () => {
         const result = reader.result;
         if (typeof result === "string") {
-          resolve(result);
+          // Z-API exige base64 puro — sem o prefixo "data:application/pdf;base64,"
+          const base64 = result.includes(",") ? result.split(",")[1] : result;
+          resolve(base64);
         } else {
           reject(new Error("Erro ao ler arquivo"));
         }
@@ -1397,7 +1399,7 @@ Equipe Financeira`}
               >
                 <pre style={{ margin: 0, fontFamily: "inherit", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{mensagemPreview}</pre>
               </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <label
                   style={{
                     display: "inline-flex",
@@ -1411,6 +1413,7 @@ Equipe Financeira`}
                     fontSize: 12,
                     fontWeight: 600,
                     cursor: "pointer",
+                    alignSelf: "flex-start",
                   }}
                 >
                   <span>📎 Anexar PDFs (até 5)</span>
@@ -1423,8 +1426,16 @@ Equipe Financeira`}
                   />
                 </label>
                 {anexos.length > 0 && (
-                  <div style={{ fontSize: 11, color: "#64748B", textAlign: "right" }}>
-                    {anexos.length} PDF(s) selecionado(s)
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {anexos.map((f, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 6, padding: "4px 10px", fontSize: 12 }}>
+                        <span style={{ color: "#334155" }}>📄 {f.name}</span>
+                        <button
+                          onClick={() => setAnexos(prev => prev.filter((_, idx) => idx !== i))}
+                          style={{ background: "none", border: "none", color: "#94A3B8", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: "0 2px" }}
+                        >×</button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
