@@ -137,11 +137,85 @@ function BaixarModal({ open, titulo, onClose, onConfirm, initialValues, modoEdic
   );
 }
 
+function LancarSaldoModal({ open, titulo, recebimento, onClose, onConfirm }: {
+  open: boolean;
+  titulo: Titulo | null;
+  recebimento: RecebimentoInfo | null;
+  onClose: () => void;
+  onConfirm: (data: { valorRecebido: string; data: string; forma: string }) => void;
+}) {
+  const hoje = new Date().toISOString().split("T")[0];
+  const [form, setForm] = useState({ valorRecebido: "", data: hoje, forma: "PIX" });
+
+  useEffect(() => {
+    if (open) setForm({ valorRecebido: "", data: hoje, forma: "PIX" });
+  }, [open]);
+
+  if (!open || !titulo || !recebimento) return null;
+
+  const saldo = recebimento.saldoDevedor ?? Math.max(0, titulo.total - recebimento.valorRecebido);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)", backdropFilter: "blur(4px)" }} onClick={onClose} />
+      <div style={{ position: "relative", background: "#fff", borderRadius: 16, boxShadow: "0 25px 50px rgba(0,0,0,0.18)", width: 440, maxWidth: "90vw", padding: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#0F172A" }}>Lançar Saldo Restante</div>
+          <button onClick={onClose} style={{ background: "#F1F5F9", border: "none", borderRadius: 8, padding: "6px 8px", cursor: "pointer", color: "#64748B" }}>✕</button>
+        </div>
+
+        {/* Resumo financeiro do título */}
+        <div style={{ background: "#FEF3C7", borderRadius: 10, padding: "14px 16px", marginBottom: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontWeight: 700, color: "#0F172A", fontSize: 14, marginBottom: 2 }}>{titulo.numeroNF}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ color: "#64748B" }}>Total do título</span>
+            <span style={{ fontWeight: 600, color: "#0F172A" }}>{brl(titulo.total)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ color: "#64748B" }}>Já recebido</span>
+            <span style={{ fontWeight: 600, color: "#065F46" }}>{brl(recebimento.valorRecebido)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, borderTop: "1px solid #FDE68A", paddingTop: 8, marginTop: 2 }}>
+            <span style={{ color: "#92400E", fontWeight: 700 }}>Saldo devedor</span>
+            <span style={{ color: "#B91C1C", fontWeight: 800 }}>{brl(saldo)}</span>
+          </div>
+        </div>
+
+        <form onSubmit={e => { e.preventDefault(); if (!form.valorRecebido) return; onConfirm(form); }} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <FormField label="Valor recebido agora (R$)">
+            <input
+              type="number"
+              step="0.01"
+              placeholder={String(saldo)}
+              value={form.valorRecebido}
+              onChange={e => setForm(p => ({ ...p, valorRecebido: e.target.value }))}
+              required
+              style={inputStyle}
+            />
+          </FormField>
+          <FormField label="Data do Recebimento">
+            <input type="date" value={form.data} onChange={e => setForm(p => ({ ...p, data: e.target.value }))} required style={inputStyle} />
+          </FormField>
+          <FormField label="Forma de Pagamento">
+            <select value={form.forma} onChange={e => setForm(p => ({ ...p, forma: e.target.value }))} style={inputStyle}>
+              {["PIX", "DINHEIRO", "BOLETO", "TRANSFERENCIA", "OUTRO"].map(f => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </FormField>
+          <button type="submit" style={{ background: "#D97706", color: "#fff", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+            Confirmar
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function GestaoRecebimentosPage() {
   const { getCliente, setRecebimentos, addToast } = useStore();
   const [tab, setTab] = useState<"PENDENTES" | "RECEBIDOS" | "PARCIAIS">("PENDENTES");
   const [baixarTitulo, setBaixarTitulo] = useState<Titulo | null>(null);
   const [editarTitulo, setEditarTitulo] = useState<Titulo | null>(null);
+  const [lancarSaldoTitulo, setLancarSaldoTitulo] = useState<Titulo | null>(null);
   const [titulosAtlas, setTitulosAtlas] = useState<Titulo[]>([]);
   const [clientesAtlas, setClientesAtlas] = useState<Record<string, Cliente>>({});
   const [recebimentosPorTitulo, setRecebimentosPorTitulo] = useState<Record<string, RecebimentoInfo>>({});
@@ -345,6 +419,57 @@ export default function GestaoRecebimentosPage() {
     }
   };
 
+  const handleLancarSaldo = async (formData: { valorRecebido: string; data: string; forma: string }) => {
+    if (!lancarSaldoTitulo) return;
+    const recAtual = recebimentosPorTitulo[String(lancarSaldoTitulo.id)];
+    try {
+      const res = await apiFetch("/api/recebimentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo_id: lancarSaldoTitulo.id,
+          valor_recebido: parseFloat(formData.valorRecebido),
+          forma: formData.forma,
+          data: formData.data,
+          observacao: "",
+          parcial: true, // backend verifica cumulativo e promove a RECEBIDO se atingir total
+        }),
+      });
+
+      if (!res.ok) throw new Error("Erro ao lançar saldo");
+      const recebimento = await res.json();
+
+      // Calcula cumulativo localmente
+      const valorAnterior = recAtual?.valorRecebido ?? 0;
+      const valorNovo = parseFloat(formData.valorRecebido);
+      const totalRecebido = valorAnterior + valorNovo;
+      const novoStatus = totalRecebido >= lancarSaldoTitulo.total ? "RECEBIDO" as const : "PARCIAL" as const;
+      const novoSaldo = Math.max(0, lancarSaldoTitulo.total - totalRecebido);
+
+      setTitulosAtlas(prev => prev.map(t => t.id === lancarSaldoTitulo.id ? { ...t, status: novoStatus } : t));
+      setRecebimentosPorTitulo(prev => ({
+        ...prev,
+        [String(lancarSaldoTitulo.id)]: {
+          ...(prev[String(lancarSaldoTitulo.id)] ?? {}),
+          id: recebimento.id,
+          valorRecebido: totalRecebido,
+          data: formData.data,
+          forma: formData.forma,
+          observacao: "",
+          parcial: novoStatus === "PARCIAL",
+          saldoDevedor: novoSaldo,
+        },
+      }));
+
+      addToast(novoStatus === "RECEBIDO" ? "Saldo quitado! Título marcado como RECEBIDO ✅" : "Saldo parcial lançado.");
+      setLancarSaldoTitulo(null);
+    } catch (error) {
+      console.error("Erro ao lançar saldo:", error);
+      setLancarSaldoTitulo(null);
+      addToast("Erro ao lançar saldo", "error");
+    }
+  };
+
   const totalSaldoDevedor = parciaisList.reduce((acc, t) => {
     const rec = recebimentosPorTitulo[String(t.id)];
     return acc + (rec?.saldoDevedor ?? t.total);
@@ -494,7 +619,7 @@ export default function GestaoRecebimentosPage() {
                       </td>
                       <td style={{ padding: "11px 14px" }}>
                         <button
-                          onClick={() => setBaixarTitulo(t)}
+                          onClick={() => setLancarSaldoTitulo(t)}
                           style={{ background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                           Lançar Saldo
                         </button>
@@ -525,6 +650,15 @@ export default function GestaoRecebimentosPage() {
         onConfirm={handleEditarBaixa}
         initialValues={editarTitulo ? recebimentosPorTitulo[String(editarTitulo.id)] : undefined}
         modoEdicao
+      />
+
+      {/* Modal lançar saldo restante (aba Parcial) */}
+      <LancarSaldoModal
+        open={!!lancarSaldoTitulo}
+        titulo={lancarSaldoTitulo}
+        recebimento={lancarSaldoTitulo ? (recebimentosPorTitulo[String(lancarSaldoTitulo.id)] ?? null) : null}
+        onClose={() => setLancarSaldoTitulo(null)}
+        onConfirm={handleLancarSaldo}
       />
     </div>
   );
