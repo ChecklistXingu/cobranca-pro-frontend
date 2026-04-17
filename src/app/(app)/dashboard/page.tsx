@@ -289,11 +289,11 @@ export default function DashboardPage() {
 
     { label: "Recebido no mês", value: brl(stats.recebido), color: "#065F46", bg: "#ECFDF5", icon: "✅" },
 
+    { label: "Em Aberto Parcial", value: brl(stats.parciaisSaldo), color: "#D97706", bg: "#FEF3C7", icon: "🔄" },
+
     { label: "Taxa Recuperação", value: `${stats.taxa}%`, color: "#6D28D9", bg: "#F5F3FF", icon: "📈" },
 
     { label: "Títulos totais", value: titulosData.length, color: "#0369A1", bg: "#F0F9FF", icon: "🗂" },
-
-    { label: "Em Aberto Parcial", value: brl(stats.parciaisSaldo), color: "#D97706", bg: "#FEF3C7", icon: "🔄" },
 
   ];
 
