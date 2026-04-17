@@ -232,7 +232,7 @@ export default function GestaoRecebimentosPage() {
   const parciaisList = titulosAtlas.filter(t => t.status === "PARCIAL");
 
   const showing =
-    tab === "PENDENTES" ? titulosAtlas.filter(t => t.status !== "PARCIAL") :
+    tab === "PENDENTES" ? titulosAtlas.filter(t => t.status !== "PARCIAL" && t.status !== "RECEBIDO") :
     tab === "RECEBIDOS" ? recebidosList :
     parciaisList;
 
