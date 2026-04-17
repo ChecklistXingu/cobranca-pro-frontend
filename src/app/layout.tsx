@@ -13,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
         <link rel="preload" as="image" href="/login%202.png" />
+        <link rel="icon" href="/favicon.ico.png" type="image/png" />
       </head>
       <body>
         <ProgressProviderWrapper>
