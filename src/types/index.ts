@@ -1,4 +1,4 @@
-export type TituloStatus = "ABERTO" | "VENCIDO" | "RECEBIDO" | "NEGOCIADO" | "CANCELADO";
+export type TituloStatus = "ABERTO" | "VENCIDO" | "RECEBIDO" | "NEGOCIADO" | "CANCELADO" | "PARCIAL";
 export type FormaRecebimento = "PIX" | "DINHEIRO" | "BOLETO" | "TRANSFERENCIA" | "OUTRO";
 export type DisparoStatus = "ENVIADO" | "FALHOU" | "PENDENTE";
 
