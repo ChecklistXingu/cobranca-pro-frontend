@@ -69,6 +69,7 @@ export default function LoginPage() {
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
+        backgroundColor: "#2C4A2E",
       }}
     >
       {/* Painel Lateral Direito */}
