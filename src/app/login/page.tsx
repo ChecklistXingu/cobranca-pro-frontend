@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -10,9 +10,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tentativasFalhas, setTentativasFalhas] = useState(0);
+  const [bloqueadoAte, setBloqueadoAte] = useState<number | null>(null);
+  const [segundosRestantes, setSegundosRestantes] = useState(0);
+
+  useEffect(() => {
+    if (!bloqueadoAte) return;
+    const intervalo = setInterval(() => {
+      const restante = Math.ceil((bloqueadoAte - Date.now()) / 1000);
+      if (restante <= 0) {
+        setBloqueadoAte(null);
+        setSegundosRestantes(0);
+        setTentativasFalhas(0);
+        setError(null);
+      } else {
+        setSegundosRestantes(restante);
+      }
+    }, 1000);
+    return () => clearInterval(intervalo);
+  }, [bloqueadoAte]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (bloqueadoAte && Date.now() < bloqueadoAte) return;
     setLoading(true);
     setError(null);
 
@@ -20,11 +40,23 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError("E-mail ou senha inválidos. Verifique suas credenciais.");
+      const novasTentativas = tentativasFalhas + 1;
+      setTentativasFalhas(novasTentativas);
+      if (novasTentativas >= 5) {
+        const ate = Date.now() + 60 * 1000;
+        setBloqueadoAte(ate);
+        setSegundosRestantes(60);
+        setError("Muitas tentativas. Tente novamente em 60 segundos.");
+      } else {
+        const restam = 5 - novasTentativas;
+        setError(`E-mail ou senha inválidos. ${restam} tentativa${restam > 1 ? "s" : ""} restante${restam > 1 ? "s" : ""}.`);
+      }
       setLoading(false);
       return;
     }
 
+    setTentativasFalhas(0);
+    setBloqueadoAte(null);
     router.push("/dashboard");
     router.refresh();
   }
@@ -33,7 +65,7 @@ export default function LoginPage() {
     <div
       className="min-h-screen flex items-stretch justify-end"
       style={{
-        backgroundImage: "url('/login.png')",
+        backgroundImage: "url('/login%202.png')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
@@ -100,12 +132,14 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !!bloqueadoAte}
             className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold
               py-2.5 px-4 rounded-lg text-sm transition-all duration-150 shadow-sm
               flex items-center justify-center gap-2 mt-2"
           >
-            {loading ? (
+            {bloqueadoAte ? (
+              `Aguarde ${segundosRestantes}s`
+            ) : loading ? (
               <>
                 <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
