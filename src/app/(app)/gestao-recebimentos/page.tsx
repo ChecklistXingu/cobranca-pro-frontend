@@ -287,6 +287,7 @@ export default function GestaoRecebimentosPage() {
       setBaixarTitulo(null);
     } catch (error) {
       console.error("Erro ao baixar título:", error);
+      setBaixarTitulo(null);
       addToast("Erro ao processar recebimento", "error");
     }
   };
@@ -339,6 +340,7 @@ export default function GestaoRecebimentosPage() {
       setEditarTitulo(null);
     } catch (error) {
       console.error("Erro ao editar baixa:", error);
+      setEditarTitulo(null);
       addToast("Erro ao editar recebimento", "error");
     }
   };
