@@ -201,6 +201,8 @@ export default function DashboardPage() {
 
       { name: "Negociado", value: negociado, color: "#8B5CF6" },
 
+      { name: "Parcial", value: somaStatus("PARCIAL"), color: "#F59E0B" },
+
     ];
 
 
