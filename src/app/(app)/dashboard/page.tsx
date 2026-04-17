@@ -38,7 +38,7 @@ const parseLocalDate = (value: string | null) => {
 
 export default function DashboardPage() {
 
-  const { addToast, titulos, clientes, disparos, setTitulos, setClientes, setDisparos, setRecebimentos } = useStore();
+  const { addToast, titulos, clientes, disparos, recebimentos, setTitulos, setClientes, setDisparos, setRecebimentos } = useStore();
 
   const now = new Date();
 
@@ -175,7 +175,16 @@ export default function DashboardPage() {
 
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
 
-    const disparosEnviados = disparosData.filter(d => d.status === "ENVIADO").length;
+    const parciaisTitulos = titulosFiltrados.filter(t => t.status === "PARCIAL");
+    const recebidoPorTitulo = new Map<string, number>();
+    for (const r of recebimentos) {
+      const tId = String((r as any).tituloId ?? (r as any).titulo_id ?? "");
+      if (tId) recebidoPorTitulo.set(tId, (recebidoPorTitulo.get(tId) ?? 0) + Number((r as any).valorRecebido || 0));
+    }
+    const parciaisSaldo = parciaisTitulos.reduce((sum, t) => {
+      const recebido = recebidoPorTitulo.get(String(t.id)) ?? 0;
+      return sum + Math.max(0, t.total - recebido);
+    }, 0);
 
 
 
@@ -263,9 +272,9 @@ export default function DashboardPage() {
 
 
 
-    return { emAberto, vencidos, recebido, taxa, disparosEnviados, donutData, topAtraso, lineData, barData };
+    return { emAberto, vencidos, recebido, taxa, parciaisCount: parciaisTitulos.length, parciaisSaldo, donutData, topAtraso, lineData, barData };
 
-  }, [titulosFiltrados, disparosData, dataInicio, dataFim]);
+  }, [titulosFiltrados, disparosData, recebimentos, dataInicio, dataFim]);
 
 
 
@@ -281,7 +290,7 @@ export default function DashboardPage() {
 
     { label: "Títulos totais", value: titulosData.length, color: "#0369A1", bg: "#F0F9FF", icon: "🗂" },
 
-    { label: "Disparos enviados", value: stats.disparosEnviados, color: "#92400E", bg: "#FFFBEB", icon: "💬" },
+    { label: "Parcial / Renegoc.", value: `${stats.parciaisCount} títulos · ${brl(stats.parciaisSaldo)}`, color: "#92400E", bg: "#FEF3C7", icon: "🔄" },
 
   ];
 
