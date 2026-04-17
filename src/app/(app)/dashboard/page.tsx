@@ -175,16 +175,19 @@ export default function DashboardPage() {
 
     const taxa = total > 0 ? ((recebido / total) * 100).toFixed(1) : "0.0";
 
-    const parciaisTitulos = titulosFiltrados.filter(t => t.status === "PARCIAL");
-    const recebidoPorTitulo = new Map<string, number>();
+    // Saldo parcial: usa saldo_devedor do recebimento mais recente por título PARCIAL
+    const parciaisTitulosIds = new Set(
+      titulosFiltrados.filter(t => t.status === "PARCIAL").map(t => String(t.id))
+    );
+    const saldoPorTitulo = new Map<string, number>();
     for (const r of recebimentos) {
-      const tId = String((r as any).tituloId ?? (r as any).titulo_id ?? "");
-      if (tId) recebidoPorTitulo.set(tId, (recebidoPorTitulo.get(tId) ?? 0) + Number((r as any).valorRecebido || 0));
+      const tId = String((r as any).tituloId ?? "");
+      if (parciaisTitulosIds.has(tId) && !saldoPorTitulo.has(tId)) {
+        // recebimentos vêm ordenados por created_at DESC — primeiro = mais recente
+        saldoPorTitulo.set(tId, Number((r as any).saldoDevedor ?? 0));
+      }
     }
-    const parciaisSaldo = parciaisTitulos.reduce((sum, t) => {
-      const recebido = recebidoPorTitulo.get(String(t.id)) ?? 0;
-      return sum + Math.max(0, t.total - recebido);
-    }, 0);
+    const parciaisSaldo = Array.from(saldoPorTitulo.values()).reduce((a, b) => a + b, 0);
 
 
 
@@ -272,7 +275,7 @@ export default function DashboardPage() {
 
 
 
-    return { emAberto, vencidos, recebido, taxa, parciaisCount: parciaisTitulos.length, parciaisSaldo, donutData, topAtraso, lineData, barData };
+    return { emAberto, vencidos, recebido, taxa, parciaisSaldo, donutData, topAtraso, lineData, barData };
 
   }, [titulosFiltrados, disparosData, recebimentos, dataInicio, dataFim]);
 
@@ -290,7 +293,7 @@ export default function DashboardPage() {
 
     { label: "Títulos totais", value: titulosData.length, color: "#0369A1", bg: "#F0F9FF", icon: "🗂" },
 
-    { label: "Parcial / Renegoc.", value: `${stats.parciaisCount} títulos · ${brl(stats.parciaisSaldo)}`, color: "#92400E", bg: "#FEF3C7", icon: "🔄" },
+    { label: "Em Aberto Parcial", value: brl(stats.parciaisSaldo), color: "#D97706", bg: "#FEF3C7", icon: "🔄" },
 
   ];
 
